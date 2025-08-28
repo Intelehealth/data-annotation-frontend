@@ -1,104 +1,115 @@
-"use client";
+'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { useSession, signIn, signOut } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from 'react';
+import { useRouter } from 'next/navigation';
+import { authAPI } from '@/lib/api';
 
 interface User {
-  id: string;
+  _id: string;
   email: string;
-  name: string;
   firstName: string;
   lastName: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signup: (userData: { email: string; password: string; firstName: string; lastName: string }) => Promise<{ success: boolean; error?: string }>;
+  login: (
+    email: string,
+    password: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  signup: (userData: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+  }) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data: session, status } = useSession();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    if (status === "loading") {
-      setIsLoading(true);
-    } else if (status === "authenticated" && session?.user) {
-      setUser({
-        id: session.user.id || "",
-        email: session.user.email || "",
-        name: session.user.name || "",
-        firstName: (session.user as any).firstName || "",
-        lastName: (session.user as any).lastName || ""
-      });
-      setIsLoading(false);
-    } else {
-      setUser(null);
-      setIsLoading(false);
+    // Check if user is already logged in on app start
+    const token = localStorage.getItem('accessToken');
+    const userData = localStorage.getItem('user');
+
+    if (token && userData) {
+      try {
+        const parsedUser = JSON.parse(userData);
+        setUser(parsedUser);
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('user');
+      }
     }
-  }, [session, status]);
+    setIsLoading(false);
+  }, []);
 
   const login = async (email: string, password: string) => {
     try {
-      const result = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
-      });
+      const response = await authAPI.login({ email, password });
 
-      if (result?.error) {
-        return { success: false, error: "Invalid credentials" };
-      }
+      // Store token and user data
+      localStorage.setItem('accessToken', response.accessToken);
+      localStorage.setItem('user', JSON.stringify(response.user));
 
-      if (result?.ok) {
-        router.push("/dashboard"); // Redirect to dashboard after login
-        return { success: true };
-      }
+      setUser(response.user);
+      router.push('/dashboard');
 
-      return { success: false, error: "Login failed" };
-    } catch (error) {
-      console.error("Login error:", error);
-      return { success: false, error: "An error occurred during login" };
+      return { success: true };
+    } catch (error: any) {
+      console.error('Login error:', error);
+      const errorMessage = error.response?.data?.message || 'Login failed';
+      return { success: false, error: errorMessage };
     }
   };
 
-  const signup = async (userData: { email: string; password: string; firstName: string; lastName: string }) => {
+  const signup = async (userData: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+  }) => {
     try {
-      const response = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(userData),
-      });
+      const response = await authAPI.register(userData);
 
-      const data = await response.json();
+      // Store token and user data
+      localStorage.setItem('accessToken', response.accessToken);
+      localStorage.setItem('user', JSON.stringify(response.user));
 
-      if (!response.ok) {
-        return { success: false, error: data.error || "Signup failed" };
-      }
+      setUser(response.user);
+      router.push('/dashboard');
 
-      // Auto-login after successful signup
-      const loginResult = await login(userData.email, userData.password);
-      return loginResult;
-    } catch (error) {
-      console.error("Signup error:", error);
-      return { success: false, error: "An error occurred during signup" };
+      return { success: true };
+    } catch (error: any) {
+      console.error('Signup error:', error);
+      const errorMessage = error.response?.data?.message || 'Signup failed';
+      return { success: false, error: errorMessage };
     }
   };
 
-  const logout = async () => {
-    await signOut({ redirect: false });
-    router.push("/login");
+  const logout = () => {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('user');
+    setUser(null);
+    router.push('/login');
   };
 
   const value: AuthContextType = {
@@ -116,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
+    throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 }
