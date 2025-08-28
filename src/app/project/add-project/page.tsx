@@ -1,12 +1,20 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { 
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { projectsAPI, CreateProjectDto } from '@/lib/api/projects';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
   Plus,
   FolderPlus,
   FileText,
@@ -15,9 +23,9 @@ import {
   Database,
   Tag,
   ArrowLeft,
-  Trash2
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+  Trash2,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface MetadataField {
   id: string;
@@ -53,23 +61,33 @@ const fieldTypes = [
 ];
 
 const predefinedColors = [
-  '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', 
-  '#3b82f6', '#8b5cf6', '#ec4899', '#64748b', '#0f172a'
+  '#ef4444',
+  '#f97316',
+  '#eab308',
+  '#22c55e',
+  '#06b6d4',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+  '#64748b',
+  '#0f172a',
 ];
 
 export default function AddProjectPage() {
   const router = useRouter();
-  
+
   // Project Basic Info
-  const [projectName, setProjectName] = useState("");
-  const [projectDescription, setProjectDescription] = useState("");
-  const [projectType, setProjectType] = useState("");
-  
+  const [projectName, setProjectName] = useState('');
+  const [projectDescription, setProjectDescription] = useState('');
+  const [projectType, setProjectType] = useState('');
+
   // Metadata Schema
   const [metadataFields, setMetadataFields] = useState<MetadataField[]>([]);
-  
+
   // Label Schema
-  const [annotationClasses, setAnnotationClasses] = useState<AnnotationClass[]>([]);
+  const [annotationClasses, setAnnotationClasses] = useState<AnnotationClass[]>(
+    [],
+  );
 
   const addMetadataField = () => {
     const newField: MetadataField = {
@@ -77,66 +95,93 @@ export default function AddProjectPage() {
       name: '',
       label: '',
       type: 'text',
-      required: false
+      required: false,
     };
     setMetadataFields([...metadataFields, newField]);
   };
 
   const updateMetadataField = (id: string, updates: Partial<MetadataField>) => {
-    setMetadataFields(fields =>
-      fields.map(field =>
-        field.id === id ? { ...field, ...updates } : field
-      )
+    setMetadataFields((fields) =>
+      fields.map((field) =>
+        field.id === id ? { ...field, ...updates } : field,
+      ),
     );
   };
 
   const removeMetadataField = (id: string) => {
-    setMetadataFields(fields => fields.filter(field => field.id !== id));
+    setMetadataFields((fields) => fields.filter((field) => field.id !== id));
   };
 
   const addAnnotationClass = () => {
     const newClass: AnnotationClass = {
       id: Date.now().toString(),
       name: '',
-      color: predefinedColors[annotationClasses.length % predefinedColors.length],
+      color:
+        predefinedColors[annotationClasses.length % predefinedColors.length],
       description: '',
-      hotkey: ''
+      hotkey: '',
     };
     setAnnotationClasses([...annotationClasses, newClass]);
   };
 
-  const updateAnnotationClass = (id: string, updates: Partial<AnnotationClass>) => {
-    setAnnotationClasses(classes =>
-      classes.map(cls =>
-        cls.id === id ? { ...cls, ...updates } : cls
-      )
+  const updateAnnotationClass = (
+    id: string,
+    updates: Partial<AnnotationClass>,
+  ) => {
+    setAnnotationClasses((classes) =>
+      classes.map((cls) => (cls.id === id ? { ...cls, ...updates } : cls)),
     );
   };
 
   const removeAnnotationClass = (id: string) => {
-    setAnnotationClasses(classes => classes.filter(cls => cls.id !== id));
+    setAnnotationClasses((classes) => classes.filter((cls) => cls.id !== id));
   };
 
-  const handleCreateProject = () => {
+  const handleCreateProject = async () => {
     if (!projectName || !projectType) {
       alert('Please fill in required fields');
       return;
     }
 
-    const projectData = {
-      name: projectName,
-      description: projectDescription,
-      type: projectType,
-      metadataSchema: metadataFields,
-      labelSchema: annotationClasses,
-      createdAt: new Date().toISOString()
-    };
-    
-    console.log('Creating project:', projectData);
-    
-    // Generate a mock project ID and redirect
-    const projectId = Date.now().toString();
-    router.push(`/project/${projectId}`);
+    try {
+      // Transform the data to match the API schema
+      const projectData: CreateProjectDto = {
+        name: projectName,
+        description: projectDescription,
+        schema: {
+          metadataFields: metadataFields.map((field) => ({
+            name: field.name,
+            type:
+              field.type === 'text'
+                ? 'string'
+                : field.type === 'number'
+                ? 'number'
+                : field.type === 'select'
+                ? 'select'
+                : field.type === 'date'
+                ? 'date'
+                : 'boolean',
+            label: field.label,
+            required: field.required,
+            options: field.type === 'select' ? field.options : undefined,
+            defaultValue: field.defaultValue,
+          })),
+          annotationLabels: annotationClasses.map((cls) => ({
+            name: cls.name,
+            type: 'bbox', // Default to bbox for now, can be enhanced later
+            color: cls.color,
+            description: cls.description,
+          })),
+        },
+      };
+
+      const newProject = await projectsAPI.create(projectData);
+      alert('Project created successfully!');
+      router.push(`/project/${newProject._id}`);
+    } catch (error) {
+      console.error('Error creating project:', error);
+      alert('Failed to create project. Please try again.');
+    }
   };
 
   return (
@@ -153,7 +198,9 @@ export default function AddProjectPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Create New Project</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Create New Project
+            </h1>
             <p className="text-gray-600 mt-1">Set up your annotation project</p>
           </div>
         </div>
@@ -165,12 +212,19 @@ export default function AddProjectPage() {
             <div className="border-b border-gray-100 pb-6">
               <div className="flex items-center space-x-2 mb-4">
                 <FolderPlus className="h-5 w-5 text-blue-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Project Information</h2>
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Project Information
+                </h2>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="projectName" className="text-sm font-medium text-gray-700">Project Name *</Label>
+                  <Label
+                    htmlFor="projectName"
+                    className="text-sm font-medium text-gray-700"
+                  >
+                    Project Name *
+                  </Label>
                   <Input
                     id="projectName"
                     placeholder="Enter project name"
@@ -180,7 +234,12 @@ export default function AddProjectPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="projectDescription" className="text-sm font-medium text-gray-700">Description</Label>
+                  <Label
+                    htmlFor="projectDescription"
+                    className="text-sm font-medium text-gray-700"
+                  >
+                    Description
+                  </Label>
                   <Input
                     id="projectDescription"
                     placeholder="Brief description"
@@ -192,7 +251,9 @@ export default function AddProjectPage() {
               </div>
 
               <div className="mt-6 space-y-3">
-                <Label className="text-sm font-medium text-gray-700">Project Type *</Label>
+                <Label className="text-sm font-medium text-gray-700">
+                  Project Type *
+                </Label>
                 <div className="grid grid-cols-4 gap-4">
                   {projectTypes.map((type) => {
                     const Icon = type.icon;
@@ -201,14 +262,16 @@ export default function AddProjectPage() {
                         key={type.value}
                         onClick={() => setProjectType(type.value)}
                         className={cn(
-                          "flex flex-col items-center space-y-3 p-4 rounded-lg border-2 transition-all hover:shadow-sm",
+                          'flex flex-col items-center space-y-3 p-4 rounded-lg border-2 transition-all hover:shadow-sm',
                           projectType === type.value
-                            ? "border-blue-500 bg-blue-50 text-blue-900 shadow-sm"
-                            : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                            ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50',
                         )}
                       >
                         <Icon className="h-6 w-6" />
-                        <span className="text-sm font-medium text-center leading-tight">{type.label}</span>
+                        <span className="text-sm font-medium text-center leading-tight">
+                          {type.label}
+                        </span>
                       </button>
                     );
                   })}
@@ -221,54 +284,83 @@ export default function AddProjectPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-2">
                   <Database className="h-5 w-5 text-blue-600" />
-                  <h2 className="text-xl font-semibold text-gray-900">Metadata Fields</h2>
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    Metadata Fields
+                  </h2>
                 </div>
-                <Button onClick={addMetadataField} size="sm" className="bg-blue-600 hover:bg-blue-700">
+                <Button
+                  onClick={addMetadataField}
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
                   <Plus className="h-4 w-4 mr-2" />
                   Add Field
                 </Button>
               </div>
-              
-              <p className="text-sm text-gray-600 mb-6">Define metadata fields for your data</p>
-              
+
+              <p className="text-sm text-gray-600 mb-6">
+                Define metadata fields for your data
+              </p>
+
               {metadataFields.length > 0 && (
                 <div className="space-y-4">
                   {/* Header Row */}
                   <div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-50 rounded-lg">
                     <div className="col-span-3">
-                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Field Name</span>
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                        Field Name
+                      </span>
                     </div>
                     <div className="col-span-3">
-                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Display Label</span>
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                        Display Label
+                      </span>
                     </div>
                     <div className="col-span-2">
-                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Type</span>
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                        Type
+                      </span>
                     </div>
                     <div className="col-span-2">
-                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Default</span>
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                        Default
+                      </span>
                     </div>
                     <div className="col-span-2">
-                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Actions</span>
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                        Actions
+                      </span>
                     </div>
                   </div>
-                  
+
                   {/* Field Rows */}
                   {metadataFields.map((field) => (
-                    <div key={field.id} className="grid grid-cols-12 gap-4 items-center p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <div
+                      key={field.id}
+                      className="grid grid-cols-12 gap-4 items-center p-4 bg-gray-50 rounded-lg border border-gray-200"
+                    >
                       <div className="col-span-3">
                         <Input
                           placeholder="field_name"
                           value={field.name}
-                          onChange={(e) => updateMetadataField(field.id, { name: e.target.value })}
+                          onChange={(e) =>
+                            updateMetadataField(field.id, {
+                              name: e.target.value,
+                            })
+                          }
                           className="h-9"
                         />
                       </div>
-                      
+
                       <div className="col-span-3">
                         <Input
                           placeholder="Field Label"
                           value={field.label}
-                          onChange={(e) => updateMetadataField(field.id, { label: e.target.value })}
+                          onChange={(e) =>
+                            updateMetadataField(field.id, {
+                              label: e.target.value,
+                            })
+                          }
                           className="h-9"
                         />
                       </div>
@@ -276,10 +368,14 @@ export default function AddProjectPage() {
                       <div className="col-span-2">
                         <select
                           value={field.type}
-                          onChange={(e) => updateMetadataField(field.id, { type: e.target.value as any })}
+                          onChange={(e) =>
+                            updateMetadataField(field.id, {
+                              type: e.target.value as any,
+                            })
+                          }
                           className="w-full h-9 px-3 py-1 border border-gray-300 bg-white rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
-                          {fieldTypes.map(type => (
+                          {fieldTypes.map((type) => (
                             <option key={type.value} value={type.value}>
                               {type.label}
                             </option>
@@ -291,7 +387,11 @@ export default function AddProjectPage() {
                         <Input
                           placeholder="Default value"
                           value={field.defaultValue || ''}
-                          onChange={(e) => updateMetadataField(field.id, { defaultValue: e.target.value })}
+                          onChange={(e) =>
+                            updateMetadataField(field.id, {
+                              defaultValue: e.target.value,
+                            })
+                          }
                           className="h-9"
                         />
                       </div>
@@ -300,13 +400,19 @@ export default function AddProjectPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => updateMetadataField(field.id, { required: !field.required })}
+                          onClick={() =>
+                            updateMetadataField(field.id, {
+                              required: !field.required,
+                            })
+                          }
                           className={cn(
-                            "h-8 px-3 text-xs",
-                            field.required ? "bg-blue-100 text-blue-700 border border-blue-200" : "bg-gray-100 text-gray-600"
+                            'h-8 px-3 text-xs',
+                            field.required
+                              ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                              : 'bg-gray-100 text-gray-600',
                           )}
                         >
-                          {field.required ? "Required" : "Optional"}
+                          {field.required ? 'Required' : 'Optional'}
                         </Button>
                         <Button
                           variant="ghost"
@@ -320,13 +426,20 @@ export default function AddProjectPage() {
 
                       {field.type === 'select' && (
                         <div className="col-span-12 mt-3">
-                          <Label className="text-sm font-medium text-gray-700">Options (comma-separated)</Label>
+                          <Label className="text-sm font-medium text-gray-700">
+                            Options (comma-separated)
+                          </Label>
                           <Input
                             placeholder="Option 1, Option 2, Option 3"
                             value={field.options?.join(', ') || ''}
-                            onChange={(e) => updateMetadataField(field.id, { 
-                              options: e.target.value.split(',').map(opt => opt.trim()).filter(Boolean)
-                            })}
+                            onChange={(e) =>
+                              updateMetadataField(field.id, {
+                                options: e.target.value
+                                  .split(',')
+                                  .map((opt) => opt.trim())
+                                  .filter(Boolean),
+                              })
+                            }
                             className="h-9 mt-1"
                           />
                         </div>
@@ -339,8 +452,12 @@ export default function AddProjectPage() {
               {metadataFields.length === 0 && (
                 <div className="text-center py-12 text-gray-500">
                   <Database className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                  <p className="text-lg font-medium mb-2">No metadata fields defined yet</p>
-                  <p className="text-sm">Add fields to describe your data structure</p>
+                  <p className="text-lg font-medium mb-2">
+                    No metadata fields defined yet
+                  </p>
+                  <p className="text-sm">
+                    Add fields to describe your data structure
+                  </p>
                 </div>
               )}
             </div>
@@ -350,45 +467,70 @@ export default function AddProjectPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-2">
                   <Tag className="h-5 w-5 text-blue-600" />
-                  <h2 className="text-xl font-semibold text-gray-900">Annotation Classes</h2>
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    Annotation Classes
+                  </h2>
                 </div>
-                <Button onClick={addAnnotationClass} size="sm" className="bg-blue-600 hover:bg-blue-700">
+                <Button
+                  onClick={addAnnotationClass}
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
                   <Plus className="h-4 w-4 mr-2" />
                   Add Class
                 </Button>
               </div>
-              
-              <p className="text-sm text-gray-600 mb-6">Define annotation classes for labeling</p>
-              
+
+              <p className="text-sm text-gray-600 mb-6">
+                Define annotation classes for labeling
+              </p>
+
               {annotationClasses.length > 0 && (
                 <div className="space-y-4">
                   {/* Header Row */}
                   <div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-50 rounded-lg">
                     <div className="col-span-3">
-                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Class Name</span>
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                        Class Name
+                      </span>
                     </div>
                     <div className="col-span-2">
-                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Color</span>
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                        Color
+                      </span>
                     </div>
                     <div className="col-span-1">
-                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Hotkey</span>
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                        Hotkey
+                      </span>
                     </div>
                     <div className="col-span-5">
-                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Description</span>
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                        Description
+                      </span>
                     </div>
                     <div className="col-span-1">
-                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Actions</span>
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                        Actions
+                      </span>
                     </div>
                   </div>
-                  
+
                   {/* Class Rows */}
                   {annotationClasses.map((cls) => (
-                    <div key={cls.id} className="grid grid-cols-12 gap-4 items-center p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <div
+                      key={cls.id}
+                      className="grid grid-cols-12 gap-4 items-center p-4 bg-gray-50 rounded-lg border border-gray-200"
+                    >
                       <div className="col-span-3">
                         <Input
                           placeholder="Class name"
                           value={cls.name}
-                          onChange={(e) => updateAnnotationClass(cls.id, { name: e.target.value })}
+                          onChange={(e) =>
+                            updateAnnotationClass(cls.id, {
+                              name: e.target.value,
+                            })
+                          }
                           className="h-9"
                         />
                       </div>
@@ -398,7 +540,11 @@ export default function AddProjectPage() {
                           <input
                             type="color"
                             value={cls.color}
-                            onChange={(e) => updateAnnotationClass(cls.id, { color: e.target.value })}
+                            onChange={(e) =>
+                              updateAnnotationClass(cls.id, {
+                                color: e.target.value,
+                              })
+                            }
                             className="w-9 h-9 rounded border border-gray-300 cursor-pointer"
                           />
                         </div>
@@ -409,7 +555,11 @@ export default function AddProjectPage() {
                           placeholder="K"
                           maxLength={1}
                           value={cls.hotkey || ''}
-                          onChange={(e) => updateAnnotationClass(cls.id, { hotkey: e.target.value.toUpperCase() })}
+                          onChange={(e) =>
+                            updateAnnotationClass(cls.id, {
+                              hotkey: e.target.value.toUpperCase(),
+                            })
+                          }
                           className="h-9 text-center"
                         />
                       </div>
@@ -418,7 +568,11 @@ export default function AddProjectPage() {
                         <Input
                           placeholder="Class description"
                           value={cls.description || ''}
-                          onChange={(e) => updateAnnotationClass(cls.id, { description: e.target.value })}
+                          onChange={(e) =>
+                            updateAnnotationClass(cls.id, {
+                              description: e.target.value,
+                            })
+                          }
                           className="h-9"
                         />
                       </div>
@@ -441,8 +595,12 @@ export default function AddProjectPage() {
               {annotationClasses.length === 0 && (
                 <div className="text-center py-12 text-gray-500">
                   <Tag className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                  <p className="text-lg font-medium mb-2">No annotation classes defined yet</p>
-                  <p className="text-sm">Add classes to define what you'll be annotating</p>
+                  <p className="text-lg font-medium mb-2">
+                    No annotation classes defined yet
+                  </p>
+                  <p className="text-sm">
+                    Add classes to define what you'll be annotating
+                  </p>
                 </div>
               )}
             </div>
