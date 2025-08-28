@@ -46,13 +46,11 @@ interface Task {
 
 interface AnnotationWorkbenchProps {
   projectId: string;
-  projectSchema: {
-    metadataFields: any[];
-    labelSchema: any[];
-  };
+  metadataFields: any[];
+  annotationLabels: any[];
 }
 
-export function AnnotationWorkbench({ projectId, projectSchema }: AnnotationWorkbenchProps) {
+export function AnnotationWorkbench({ projectId, metadataFields, annotationLabels }: AnnotationWorkbenchProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
@@ -269,7 +267,7 @@ export function AnnotationWorkbench({ projectId, projectSchema }: AnnotationWork
           <TextAnnotationTool
             taskId={currentTask.id}
             filePath={currentTask.filePath}
-            labelSchema={projectSchema.labelSchema}
+            labelSchema={annotationLabels}
             annotations={annotations}
             onAnnotationsChange={setAnnotations}
           />
@@ -279,7 +277,7 @@ export function AnnotationWorkbench({ projectId, projectSchema }: AnnotationWork
           <ImageAnnotationTool
             taskId={currentTask.id}
             filePath={currentTask.filePath}
-            labelSchema={projectSchema.labelSchema}
+            labelSchema={annotationLabels}
             annotations={annotations}
             onAnnotationsChange={setAnnotations}
           />
@@ -289,7 +287,7 @@ export function AnnotationWorkbench({ projectId, projectSchema }: AnnotationWork
           <AudioAnnotationTool
             taskId={currentTask.id}
             filePath={currentTask.filePath}
-            labelSchema={projectSchema.labelSchema}
+            labelSchema={annotationLabels}
             annotations={annotations}
             onAnnotationsChange={setAnnotations}
           />
@@ -449,7 +447,7 @@ export function AnnotationWorkbench({ projectId, projectSchema }: AnnotationWork
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {projectSchema.metadataFields.map((field) => (
+                {metadataFields.map((field) => (
                   <div key={field.id} className="space-y-2">
                     <Label className="text-sm font-medium text-gray-700">
                       {field.label}

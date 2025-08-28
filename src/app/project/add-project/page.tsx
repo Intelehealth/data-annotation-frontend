@@ -144,35 +144,34 @@ export default function AddProjectPage() {
     }
 
     try {
-      // Transform the data to match the API schema
+      // Transform the data to match the new API schema
       const projectData: CreateProjectDto = {
         name: projectName,
         description: projectDescription,
-        schema: {
-          metadataFields: metadataFields.map((field) => ({
-            name: field.name,
-            type:
-              field.type === 'text'
-                ? 'string'
-                : field.type === 'number'
-                ? 'number'
-                : field.type === 'select'
-                ? 'select'
-                : field.type === 'date'
-                ? 'date'
-                : 'boolean',
-            label: field.label,
-            required: field.required,
-            options: field.type === 'select' ? field.options : undefined,
-            defaultValue: field.defaultValue,
-          })),
-          annotationLabels: annotationClasses.map((cls) => ({
-            name: cls.name,
-            type: 'bbox', // Default to bbox for now, can be enhanced later
-            color: cls.color,
-            description: cls.description,
-          })),
-        },
+        projectType: projectType,
+        metadataFields: metadataFields.map((field) => ({
+          name: field.name,
+          type:
+            field.type === 'text'
+              ? 'string'
+              : field.type === 'number'
+              ? 'number'
+              : field.type === 'select'
+              ? 'select'
+              : field.type === 'date'
+              ? 'date'
+              : 'boolean',
+          label: field.label,
+          required: field.required,
+          options: field.type === 'select' ? field.options : undefined,
+          defaultValue: field.defaultValue,
+        })),
+        annotationLabels: annotationClasses.map((cls) => ({
+          name: cls.name,
+          type: 'bbox', // Default to bbox for now, can be enhanced later
+          color: cls.color,
+          description: cls.description,
+        })),
       };
 
       const newProject = await projectsAPI.create(projectData);

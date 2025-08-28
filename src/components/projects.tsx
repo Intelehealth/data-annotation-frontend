@@ -221,7 +221,11 @@ export function Projects() {
                       className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity -mt-1 -mr-1 text-red-500 hover:text-red-700 hover:bg-red-50"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm('Are you sure you want to delete this project?')) {
+                        if (
+                          confirm(
+                            'Are you sure you want to delete this project?',
+                          )
+                        ) {
                           handleDeleteProject(project._id);
                         }
                       }}
@@ -233,7 +237,11 @@ export function Projects() {
                   {/* Project Type Badge */}
                   <div className="mb-3">
                     <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-blue-50 text-blue-700">
-                      Data Annotation
+                      {project.projectType === 'text' && 'Text Annotation'}
+                      {project.projectType === 'image' && 'Image Annotation'}
+                      {project.projectType === 'audio' && 'Audio Annotation'}
+                      {project.projectType === 'multimodal' && 'Multi-modal'}
+                      {!['text', 'image', 'audio', 'multimodal'].includes(project.projectType) && 'Data Annotation'}
                     </span>
                   </div>
                 </div>
@@ -251,11 +259,11 @@ export function Projects() {
                   <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
                     <span className="flex items-center gap-1">
                       <span className="w-2 h-2 bg-blue-400 rounded-full"></span>
-                      {project.projectSchema.metadataFields.length} Fields
+                      {project.metadataFields.length} Fields
                     </span>
                     <span className="flex items-center gap-1">
                       <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
-                      {project.projectSchema.annotationLabels.length} Labels
+                      {project.annotationLabels.length} Labels
                     </span>
                   </div>
 

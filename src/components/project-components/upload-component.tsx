@@ -1,34 +1,63 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { 
-  Upload, 
-  FileText, 
-  Image, 
-  FileAudio, 
-  File, 
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Upload,
+  FileText,
+  Image,
+  FileAudio,
+  File,
   X,
-  CloudUpload
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+  CloudUpload,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { DatasetSelector } from './dataset-selector';
+import { datasetsAPI } from '@/lib/api/datasets';
 
 interface UploadComponentProps {
+  projectId: string;
   onFilesSelected: (files: File[]) => void;
+  onUploadComplete?: (assets: any[]) => void;
   className?: string;
 }
 
-export function UploadComponent({ onFilesSelected, className }: UploadComponentProps) {
+export function UploadComponent({
+  projectId,
+  onFilesSelected,
+  onUploadComplete,
+  className,
+}: UploadComponentProps) {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{
+    [key: string]: number;
+  }>({});
+  const [uploadStatus, setUploadStatus] = useState<{
+    [key: string]: 'pending' | 'uploading' | 'success' | 'error';
+  }>({});
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     const newFiles = [...selectedFiles, ...files];
     setSelectedFiles(newFiles);
     onFilesSelected(newFiles);
+
+    // Initialize upload status for new files
+    const newStatus: {
+      [key: string]: 'pending' | 'uploading' | 'success' | 'error';
+    } = {};
+    files.forEach((file) => {
+      newStatus[file.name] = 'pending';
+    });
+    setUploadStatus((prev) => ({ ...prev, ...newStatus }));
   };
 
   const handleFileDrop = (event: React.DragEvent) => {
@@ -38,6 +67,15 @@ export function UploadComponent({ onFilesSelected, className }: UploadComponentP
     const newFiles = [...selectedFiles, ...files];
     setSelectedFiles(newFiles);
     onFilesSelected(newFiles);
+
+    // Initialize upload status for new files
+    const newStatus: {
+      [key: string]: 'pending' | 'uploading' | 'success' | 'error';
+    } = {};
+    files.forEach((file) => {
+      newStatus[file.name] = 'pending';
+    });
+    setUploadStatus((prev) => ({ ...prev, ...newStatus }));
   };
 
   const handleDragOver = (event: React.DragEvent) => {
@@ -50,22 +88,118 @@ export function UploadComponent({ onFilesSelected, className }: UploadComponentP
   };
 
   const removeFile = (index: number) => {
+    const fileToRemove = selectedFiles[index];
     const newFiles = selectedFiles.filter((_, i) => i !== index);
     setSelectedFiles(newFiles);
     onFilesSelected(newFiles);
+
+    // Remove upload status for removed file
+    setUploadStatus((prev) => {
+      const newStatus = { ...prev };
+      delete newStatus[fileToRemove.name];
+      return newStatus;
+    });
   };
 
   const clearAllFiles = () => {
     setSelectedFiles([]);
     onFilesSelected([]);
+    setUploadStatus({});
+    setUploadProgress({});
+  };
+
+  const handleUpload = async () => {
+    if (!selectedDatasetId) {
+      alert('Please select a dataset first');
+      return;
+    }
+
+    if (selectedFiles.length === 0) {
+      alert('Please select files to upload');
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      // Update status for all files to uploading
+      const newStatus: {
+        [key: string]: 'pending' | 'uploading' | 'success' | 'error';
+      } = {};
+      selectedFiles.forEach((file) => {
+        newStatus[file.name] = 'uploading';
+      });
+      setUploadStatus(newStatus);
+
+      // Upload files
+      const assets = await datasetsAPI.uploadAssets(
+        selectedDatasetId,
+        selectedFiles,
+      );
+
+      // Update status for all files to success
+      const successStatus: {
+        [key: string]: 'pending' | 'uploading' | 'success' | 'error';
+      } = {};
+      selectedFiles.forEach((file) => {
+        successStatus[file.name] = 'success';
+      });
+      setUploadStatus(successStatus);
+
+      // Call callback with uploaded assets
+      if (onUploadComplete) {
+        onUploadComplete(assets);
+      }
+
+      // Clear files after successful upload
+      setTimeout(() => {
+        clearAllFiles();
+      }, 2000);
+    } catch (error) {
+      console.error('Upload failed:', error);
+
+      // Update status for all files to error
+      const errorStatus: {
+        [key: string]: 'pending' | 'uploading' | 'success' | 'error';
+      } = {};
+      selectedFiles.forEach((file) => {
+        errorStatus[file.name] = 'error';
+      });
+      setUploadStatus(errorStatus);
+
+      alert('Upload failed. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const getFileIcon = (file: File) => {
-    if (file.type.startsWith('image/')) return <Image className="h-5 w-5 text-blue-500" />;
-    if (file.type.includes('audio')) return <FileAudio className="h-5 w-5 text-green-500" />;
-    if (file.type.includes('document') || file.name.endsWith('.docx')) return <FileText className="h-5 w-5 text-orange-500" />;
-    if (file.type.includes('text') || file.name.endsWith('.txt')) return <FileText className="h-5 w-5 text-purple-500" />;
+    if (file.type.startsWith('image/'))
+      return <Image className="h-5 w-5 text-blue-500" />;
+    if (file.type.includes('audio'))
+      return <FileAudio className="h-5 w-5 text-green-500" />;
+    if (file.type.includes('document') || file.name.endsWith('.docx'))
+      return <FileText className="h-5 w-5 text-orange-500" />;
+    if (file.type.includes('text') || file.name.endsWith('.txt'))
+      return <FileText className="h-5 w-5 text-purple-500" />;
     return <File className="h-5 w-5 text-gray-500" />;
+  };
+
+  const getStatusIcon = (
+    status: 'pending' | 'uploading' | 'success' | 'error',
+  ) => {
+    switch (status) {
+      case 'pending':
+        return <div className="h-3 w-3 rounded-full bg-gray-300" />;
+      case 'uploading':
+        return <Loader2 className="h-3 w-3 animate-spin text-blue-500" />;
+      case 'success':
+        return <CheckCircle className="h-3 w-3 text-green-500" />;
+      case 'error':
+        return <AlertCircle className="h-3 w-3 text-red-500" />;
+      default:
+        return null;
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -77,14 +211,21 @@ export function UploadComponent({ onFilesSelected, className }: UploadComponentP
   };
 
   return (
-    <div className={cn("space-y-4", className)}>
+    <div className={cn('space-y-6', className)}>
+      {/* Dataset Selection */}
+      <DatasetSelector
+        projectId={projectId}
+        selectedDatasetId={selectedDatasetId}
+        onDatasetChange={setSelectedDatasetId}
+      />
+
       {/* Upload Area */}
       <div
         className={cn(
-          "border-2 border-dashed rounded-lg p-6 text-center transition-all duration-200 cursor-pointer",
+          'border-2 border-dashed rounded-lg p-6 text-center transition-all duration-200 cursor-pointer',
           isDragOver
-            ? "border-blue-400 bg-blue-50 scale-105"
-            : "border-gray-300 hover:border-blue-300 hover:bg-gray-50"
+            ? 'border-blue-400 bg-blue-50 scale-105'
+            : 'border-gray-300 hover:border-blue-300 hover:bg-gray-50',
         )}
         onDrop={handleFileDrop}
         onDragOver={handleDragOver}
@@ -92,27 +233,33 @@ export function UploadComponent({ onFilesSelected, className }: UploadComponentP
         onClick={() => document.getElementById('fileInput')?.click()}
       >
         <div className="flex flex-col items-center space-y-3">
-          <div className={cn(
-            "p-3 rounded-full transition-colors",
-            isDragOver ? "bg-blue-100" : "bg-gray-100"
-          )}>
-            <CloudUpload className={cn(
-              "h-8 w-8 transition-colors",
-              isDragOver ? "text-blue-600" : "text-gray-500"
-            )} />
+          <div
+            className={cn(
+              'p-3 rounded-full transition-colors',
+              isDragOver ? 'bg-blue-100' : 'bg-gray-100',
+            )}
+          >
+            <CloudUpload
+              className={cn(
+                'h-8 w-8 transition-colors',
+                isDragOver ? 'text-blue-600' : 'text-gray-500',
+              )}
+            />
           </div>
-          
+
           <div className="space-y-1">
             <h3 className="text-lg font-medium text-gray-900">
-              {isDragOver ? "Drop files here" : "Click to upload or drag & drop"}
+              {isDragOver
+                ? 'Drop files here'
+                : 'Click to upload or drag & drop'}
             </h3>
             <p className="text-sm text-gray-500">
               Support for images, documents, text files, and audio files
             </p>
           </div>
 
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             size="sm"
             className="mt-2"
             onClick={(e) => {
@@ -142,8 +289,8 @@ export function UploadComponent({ onFilesSelected, className }: UploadComponentP
             <Label className="text-sm font-medium text-gray-700">
               Selected Files ({selectedFiles.length})
             </Label>
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="sm"
               onClick={clearAllFiles}
               className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
@@ -155,32 +302,54 @@ export function UploadComponent({ onFilesSelected, className }: UploadComponentP
 
           <div className="space-y-2 max-h-48 overflow-y-auto">
             {selectedFiles.map((file, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <div
+                key={index}
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+              >
                 <div className="flex items-center space-x-3">
                   {getFileIcon(file)}
                   <div className="min-w-0">
                     <p className="font-medium text-gray-900 text-sm truncate max-w-48">
                       {file.name}
                     </p>
-                    <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
+                    <p className="text-xs text-gray-500">
+                      {formatFileSize(file.size)}
+                    </p>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeFile(index)}
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50 h-7 w-7 p-0"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
+                <div className="flex items-center space-x-2">
+                  {getStatusIcon(uploadStatus[file.name] || 'pending')}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeFile(index)}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 h-7 w-7 p-0"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
 
           <div className="pt-2">
-            <Button className="w-full" size="sm">
-              <Upload className="h-4 w-4 mr-2" />
-              Upload {selectedFiles.length} Files
+            <Button
+              className="w-full"
+              size="sm"
+              onClick={handleUpload}
+              disabled={isUploading || !selectedDatasetId}
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload {selectedFiles.length} Files
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -190,7 +359,9 @@ export function UploadComponent({ onFilesSelected, className }: UploadComponentP
       <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
         <div className="flex items-center space-x-2 mb-2">
           <File className="h-4 w-4 text-blue-600" />
-          <span className="text-sm font-medium text-blue-900">Supported Formats</span>
+          <span className="text-sm font-medium text-blue-900">
+            Supported Formats
+          </span>
         </div>
         <div className="grid grid-cols-2 gap-2 text-xs text-blue-700">
           <div>• Images: JPG, PNG, GIF, BMP, WebP</div>

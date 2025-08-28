@@ -32,10 +32,9 @@ export interface AnnotationLabel {
 export interface CreateProjectDto {
   name: string;
   description: string;
-  schema: {
-    metadataFields: MetadataField[];
-    annotationLabels: AnnotationLabel[];
-  };
+  projectType: string;
+  metadataFields: MetadataField[];
+  annotationLabels: AnnotationLabel[];
 }
 
 export interface ProjectResponse {
@@ -43,10 +42,9 @@ export interface ProjectResponse {
   userId: string;
   name: string;
   description: string;
-  projectSchema: {
-    metadataFields: MetadataField[];
-    annotationLabels: AnnotationLabel[];
-  };
+  projectType: string;
+  metadataFields: MetadataField[];
+  annotationLabels: AnnotationLabel[];
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

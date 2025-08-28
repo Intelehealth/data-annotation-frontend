@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useProject } from '@/contexts/ProjectContext';
 import { projectsAPI, ProjectResponse } from '@/lib/api/projects';
+import { datasetsAPI, DatasetResponse } from '@/lib/api/datasets';
 import { Loader2 } from 'lucide-react';
 import { ProjectSidebar } from '@/components/project-components/project-sidebar';
 import { UploadComponent } from '@/components/project-components/upload-component';
+import { DatasetManagement } from '@/components/project-components/dataset-management';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -27,6 +29,7 @@ import {
   BarChart3,
   Settings,
   FileText,
+  Database,
 } from 'lucide-react';
 
 export default function ProjectPage({
@@ -38,10 +41,13 @@ export default function ProjectPage({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [project, setProject] = useState<ProjectResponse | null>(null);
+  const [datasets, setDatasets] = useState<DatasetResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploadedAssets, setUploadedAssets] = useState<any[]>([]);
 
   useEffect(() => {
     fetchProject();
+    fetchDatasets();
   }, [params.projectId]);
 
   const fetchProject = async () => {
@@ -56,12 +62,43 @@ export default function ProjectPage({
       setLoading(false);
     }
   };
+
+  const fetchDatasets = async () => {
+    try {
+      const data = await datasetsAPI.getByProject(params.projectId);
+      setDatasets(data);
+    } catch (error) {
+      console.error('Error fetching datasets:', error);
+    }
+  };
+
   const handleFilesSelected = (files: File[]) => {
     console.log('Files selected:', files);
     // Handle the selected files here
   };
 
+  const handleUploadComplete = (assets: any[]) => {
+    console.log('Upload complete:', assets);
+    setUploadedAssets((prev) => [...prev, ...assets]);
+    // Refresh datasets to show new assets
+    fetchDatasets();
+  };
+
   const renderContent = () => {
+    if (!project) {
+      return (
+        <div className="space-y-6">
+          <div className="text-center text-gray-500">
+            <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl text-gray-400">⚠️</span>
+            </div>
+            <h3 className="text-lg font-medium mb-2">Project not found</h3>
+            <p className="mb-4">Unable to load project details</p>
+          </div>
+        </div>
+      );
+    }
+
     switch (activeTab) {
       case 'upload':
         return (
@@ -99,7 +136,11 @@ export default function ProjectPage({
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <UploadComponent onFilesSelected={handleFilesSelected} />
+                <UploadComponent
+                  projectId={params.projectId}
+                  onFilesSelected={handleFilesSelected}
+                  onUploadComplete={handleUploadComplete}
+                />
               </CardContent>
             </Card>
           </div>
@@ -107,57 +148,10 @@ export default function ProjectPage({
 
       case 'dataset':
         return (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Dataset</h1>
-                <p className="text-gray-600 mt-1">
-                  Manage and organize your project files
-                </p>
-              </div>
-              <div className="flex items-center space-x-3">
-                <Button variant="outline" size="sm">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Files
-                </Button>
-                <div className="flex items-center space-x-1 bg-white border rounded-lg p-1">
-                  <Button
-                    variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setViewMode('grid')}
-                  >
-                    <Grid3X3 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant={viewMode === 'list' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setViewMode('list')}
-                  >
-                    <List className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="text-center text-gray-500">
-                  <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <span className="text-2xl text-gray-400">📁</span>
-                  </div>
-                  <h3 className="text-lg font-medium mb-2">
-                    No files uploaded yet
-                  </h3>
-                  <p className="mb-4">
-                    Start by uploading some files to your project
-                  </p>
-                  <Button onClick={() => setActiveTab('upload')}>
-                    Upload Files
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <DatasetManagement
+            projectId={params.projectId}
+            onNavigateToUpload={() => setActiveTab('upload')}
+          />
         );
 
       case 'annotations':
@@ -291,14 +285,23 @@ export default function ProjectPage({
           <div className="space-y-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">
-                {project.name}
+                {project!.name}
               </h1>
-              <p className="text-gray-600 mt-1">
-                {project.description}
-              </p>
+              <p className="text-gray-600 mt-1">{project!.description}</p>
+              <div className="mt-3">
+                <span className="inline-flex items-center px-3 py-1 text-sm font-medium rounded-full bg-blue-50 text-blue-700">
+                  {project!.projectType === 'text' && 'Text Annotation'}
+                  {project!.projectType === 'image' && 'Image Annotation'}
+                  {project!.projectType === 'audio' && 'Audio Annotation'}
+                  {project!.projectType === 'multimodal' && 'Multi-modal'}
+                  {!['text', 'image', 'audio', 'multimodal'].includes(
+                    project!.projectType,
+                  ) && 'Data Annotation'}
+                </span>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <Card>
                 <CardContent className="p-6">
                   <div className="text-center">
@@ -306,7 +309,9 @@ export default function ProjectPage({
                       <span className="text-xl text-blue-600">📊</span>
                     </div>
                     <h3 className="text-lg font-medium text-gray-900 mb-1">
-                      {project.projectSchema.metadataFields.length}
+                      <span className="text-sm text-gray-600">
+                        {project!.metadataFields.length}
+                      </span>
                     </h3>
                     <p className="text-sm text-gray-600">Metadata Fields</p>
                   </div>
@@ -320,7 +325,9 @@ export default function ProjectPage({
                       <span className="text-xl text-green-600">🏷️</span>
                     </div>
                     <h3 className="text-lg font-medium text-gray-900 mb-1">
-                      {project.projectSchema.annotationLabels.length}
+                      <span className="text-sm text-gray-600">
+                        {project!.annotationLabels.length}
+                      </span>
                     </h3>
                     <p className="text-sm text-gray-600">Annotation Labels</p>
                   </div>
@@ -334,9 +341,29 @@ export default function ProjectPage({
                       <span className="text-xl text-purple-600">📅</span>
                     </div>
                     <h3 className="text-lg font-medium text-gray-900 mb-1">
-                      {new Date(project.createdAt).toLocaleDateString()}
+                      {new Date(project!.createdAt).toLocaleDateString()}
                     </h3>
                     <p className="text-sm text-gray-600">Created</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-6">
+                  <div className="text-center">
+                    <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <span className="text-xl text-orange-600">🎯</span>
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-1">
+                      {project!.projectType === 'text' && 'Text'}
+                      {project!.projectType === 'image' && 'Image'}
+                      {project!.projectType === 'audio' && 'Audio'}
+                      {project!.projectType === 'multimodal' && 'Multi-modal'}
+                      {!['text', 'image', 'audio', 'multimodal'].includes(
+                        project!.projectType,
+                      ) && 'Custom'}
+                    </h3>
+                    <p className="text-sm text-gray-600">Project Type</p>
                   </div>
                 </CardContent>
               </Card>
