@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { use } from 'react';
 import { useProject } from '@/contexts/ProjectContext';
 import { projectsAPI, ProjectResponse } from '@/lib/api/projects';
 import { datasetsAPI, DatasetResponse } from '@/lib/api/datasets';
@@ -8,6 +9,7 @@ import { Loader2 } from 'lucide-react';
 import { ProjectSidebar } from '@/components/project-components/project-sidebar';
 import { UploadComponent } from '@/components/project-components/upload-component';
 import { DatasetManagement } from '@/components/project-components/dataset-management';
+import { FieldSelection } from '@/components/project-components/field-selection';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -35,8 +37,9 @@ import {
 export default function ProjectPage({
   params,
 }: {
-  params: { projectId: string };
+  params: Promise<{ projectId: string }>;
 }) {
+  const { projectId } = use(params);
   const { activeTab, setActiveTab } = useProject();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
@@ -48,12 +51,12 @@ export default function ProjectPage({
   useEffect(() => {
     fetchProject();
     fetchDatasets();
-  }, [params.projectId]);
+  }, [projectId]);
 
   const fetchProject = async () => {
     try {
       setLoading(true);
-      const data = await projectsAPI.getById(params.projectId);
+      const data = await projectsAPI.getById(projectId);
       setProject(data);
     } catch (error) {
       console.error('Error fetching project:', error);
@@ -65,7 +68,7 @@ export default function ProjectPage({
 
   const fetchDatasets = async () => {
     try {
-      const data = await datasetsAPI.getByProject(params.projectId);
+      const data = await datasetsAPI.getByProject(projectId);
       setDatasets(data);
     } catch (error) {
       console.error('Error fetching datasets:', error);
@@ -80,6 +83,20 @@ export default function ProjectPage({
   const handleUploadComplete = (assets: any[]) => {
     console.log('Upload complete:', assets);
     setUploadedAssets((prev) => [...prev, ...assets]);
+    // Refresh datasets to show new assets
+    fetchDatasets();
+  };
+
+  const handleCSVUploaded = (
+    csvImportId: string,
+    fileName: string,
+    totalRows: number,
+  ) => {
+    console.log('CSV uploaded:', { csvImportId, fileName, totalRows });
+    // Handle CSV upload completion
+    alert(
+      `CSV file "${fileName}" uploaded successfully with ${totalRows} rows!`,
+    );
     // Refresh datasets to show new assets
     fetchDatasets();
   };
@@ -137,9 +154,10 @@ export default function ProjectPage({
               </CardHeader>
               <CardContent>
                 <UploadComponent
-                  projectId={params.projectId}
+                  projectId={projectId}
                   onFilesSelected={handleFilesSelected}
                   onUploadComplete={handleUploadComplete}
+                  onCSVUploaded={handleCSVUploaded}
                 />
               </CardContent>
             </Card>
@@ -149,8 +167,16 @@ export default function ProjectPage({
       case 'dataset':
         return (
           <DatasetManagement
-            projectId={params.projectId}
+            projectId={projectId}
             onNavigateToUpload={() => setActiveTab('upload')}
+          />
+        );
+
+      case 'field-selection':
+        return (
+          <FieldSelection
+            projectId={projectId}
+            csvImportId={undefined} // TODO: Get from context or props
           />
         );
 
@@ -177,7 +203,7 @@ export default function ProjectPage({
                   </p>
                   <Button
                     onClick={() =>
-                      (window.location.href = `/project/${params.projectId}/annotation`)
+                      (window.location.href = `/project/${projectId}/annotation`)
                     }
                     className="bg-blue-600 hover:bg-blue-700"
                   >
@@ -419,7 +445,7 @@ export default function ProjectPage({
       <ProjectSidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        projectId={params.projectId}
+        projectId={projectId}
       />
 
       {/* Main Content */}

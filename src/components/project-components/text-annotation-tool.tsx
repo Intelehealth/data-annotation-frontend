@@ -1,21 +1,22 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { 
-  Type,
-  Tag,
-  Trash2,
-  Eye,
-  EyeOff,
-  Palette,
-  Plus,
-  X
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { TextAnnotator } from "react-text-annotate";
+import { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { CheckCircle, XCircle, Edit3 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+// Note: Using custom implementation instead of react-text-annotator due to React 19 compatibility issues
+
+interface AnnotationLabel {
+  name: string;
+  type: 'bbox' | 'polygon' | 'point' | 'line' | 'text' | 'classification';
+  color: string;
+  description?: string;
+}
 
 interface TextAnnotation {
   id: string;
@@ -23,221 +24,332 @@ interface TextAnnotation {
   end: number;
   text: string;
   label: string;
-  color: string;
-  confidence?: number;
-  attributes?: Record<string, any>;
 }
 
 interface TextAnnotationToolProps {
-  taskId: string;
-  filePath: string;
-  labelSchema: any[];
+  content: string;
   annotations: TextAnnotation[];
-  onAnnotationsChange: (annotations: TextAnnotation[]) => void;
+  labels: string[];
+  annotationLabels: AnnotationLabel[];
+  selectedLabel?: string | null;
+  onAnnotationChange: (annotations: TextAnnotation[]) => void;
+  disabled?: boolean;
 }
 
-export function TextAnnotationTool({ 
-  taskId, 
-  filePath, 
-  labelSchema, 
-  annotations, 
-  onAnnotationsChange 
+export function TextAnnotationTool({
+  content,
+  annotations,
+  labels,
+  annotationLabels,
+  selectedLabel: externalSelectedLabel,
+  onAnnotationChange,
+  disabled = false,
 }: TextAnnotationToolProps) {
-  const [textContent, setTextContent] = useState("");
-  const [showLabels, setShowLabels] = useState(true);
-  const [activeLabel, setActiveLabel] = useState<string>("");
+  const [selectedText, setSelectedText] = useState('');
+  const [selectionStart, setSelectionStart] = useState(-1);
+  const [selectionEnd, setSelectionEnd] = useState(-1);
+  const [isAnnotating, setIsAnnotating] = useState(false);
+  const [editingAnnotation, setEditingAnnotation] =
+    useState<TextAnnotation | null>(null);
+  const [internalSelectedLabel, setInternalSelectedLabel] =
+    useState<string>('');
 
-  // Mock text content - replace with actual file loading
+  // Use external selectedLabel if provided, otherwise use internal state
+  const selectedLabel = externalSelectedLabel || internalSelectedLabel;
+
+  // Initialize selected label
   useEffect(() => {
-    const mockText = `Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+    if (labels.length > 0 && !internalSelectedLabel && !externalSelectedLabel) {
+      setInternalSelectedLabel(labels[0]);
+    }
+  }, [labels, internalSelectedLabel, externalSelectedLabel]);
 
-Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+  const getColorForLabel = (label: string) => {
+    // First try to get color from project annotation labels
+    const annotationLabel = annotationLabels.find((al) => al.name === label);
+    if (annotationLabel?.color) {
+      return annotationLabel.color;
+    }
 
-Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.`;
-    
-    setTextContent(mockText);
-  }, [filePath]);
+    // Fallback to predefined colors if not found in project
+    const fallbackColors = [
+      '#3b82f6',
+      '#ef4444',
+      '#10b981',
+      '#f59e0b',
+      '#8b5cf6',
+      '#06b6d4',
+    ];
+    const index = labels.indexOf(label) % fallbackColors.length;
+    return fallbackColors[index];
+  };
 
-  // Convert annotations to react-text-annotate format
-  const getAnnotateValue = useCallback(() => {
-    return annotations.map(annotation => ({
-      start: annotation.start,
-      end: annotation.end,
-      text: annotation.text,
-      tag: annotation.label,
-      color: annotation.color
-    }));
-  }, [annotations]);
+  const handleTextSelection = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
 
-  // Handle annotation changes from react-text-annotate
-  const handleAnnotationChange = useCallback((newAnnotations: Array<{start: number, end: number, text: string, tag: string, color: string}>) => {
-    const convertedAnnotations: TextAnnotation[] = newAnnotations.map((ann, index) => ({
-      id: Date.now().toString() + index,
-      start: ann.start,
-      end: ann.end,
-      text: ann.text,
-      label: ann.tag,
-      color: ann.color || '#3b82f6'
-    }));
-    
-    onAnnotationsChange(convertedAnnotations);
-  }, [onAnnotationsChange]);
+    const range = selection.getRangeAt(0);
+    const selectedText = range.toString().trim();
 
-  // Remove annotation
-  const removeAnnotation = useCallback((annotationId: string) => {
-    onAnnotationsChange(annotations.filter(a => a.id !== annotationId));
-  }, [annotations, onAnnotationsChange]);
+    if (selectedText.length > 0 && selectedLabel) {
+      setSelectedText(selectedText);
+      // Calculate start and end positions (improved)
+      const startIndex = content.indexOf(selectedText);
+      setSelectionStart(startIndex);
+      setSelectionEnd(startIndex + selectedText.length);
 
-  // Get label color
-  const getLabelColor = useCallback((labelName: string) => {
-    const label = labelSchema.find(l => l.name === labelName);
-    return label?.color || '#3b82f6';
-  }, [labelSchema]);
+      // Auto-create annotation if label is selected
+      if (selectedLabel) {
+        addAnnotation(selectedLabel);
+        selection.removeAllRanges(); // Clear selection
+      } else {
+        setIsAnnotating(true);
+      }
+    }
+  };
+
+  const addAnnotation = (label: string) => {
+    if (!selectedText || selectionStart === -1) return;
+
+    const newAnnotation: TextAnnotation = {
+      id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      start: selectionStart,
+      end: selectionEnd,
+      text: selectedText,
+      label,
+    };
+
+    onAnnotationChange([...annotations, newAnnotation]);
+    setSelectedText('');
+    setSelectionStart(-1);
+    setSelectionEnd(-1);
+    setIsAnnotating(false);
+  };
+
+  const removeAnnotation = (id: string) => {
+    onAnnotationChange(annotations.filter((ann) => ann.id !== id));
+  };
+
+  const editAnnotation = (annotation: TextAnnotation) => {
+    setEditingAnnotation(annotation);
+  };
+
+  const saveEdit = (newLabel: string) => {
+    if (!editingAnnotation) return;
+
+    const updatedAnnotations = annotations.map((ann) =>
+      ann.id === editingAnnotation.id ? { ...ann, label: newLabel } : ann,
+    );
+
+    onAnnotationChange(updatedAnnotations);
+    setEditingAnnotation(null);
+  };
+
+  const renderContentWithAnnotations = () => {
+    if (annotations.length === 0) {
+      return content;
+    }
+
+    // Sort annotations by start position
+    const sortedAnnotations = [...annotations].sort(
+      (a, b) => a.start - b.start,
+    );
+
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+
+    sortedAnnotations.forEach((annotation) => {
+      // Add text before annotation
+      if (annotation.start > lastIndex) {
+        parts.push(content.substring(lastIndex, annotation.start));
+      }
+
+      // Add annotation with color coding
+      const color = getColorForLabel(annotation.label);
+      parts.push(
+        <span
+          key={annotation.id}
+          className={cn(
+            'rounded px-2 py-1 mx-1 cursor-pointer border-2 transition-colors',
+            'hover:opacity-80',
+          )}
+          style={{
+            backgroundColor: `${color}20`, // 20% opacity
+            borderColor: color,
+            color: color,
+          }}
+          title={`${annotation.label}: ${annotation.text}`}
+          onClick={() => editAnnotation(annotation)}
+        >
+          {annotation.text}
+          <Badge
+            variant="secondary"
+            className="ml-1 text-xs"
+            style={{ backgroundColor: color, color: 'white' }}
+          >
+            {annotation.label}
+          </Badge>
+        </span>,
+      );
+
+      lastIndex = annotation.end;
+    });
+
+    // Add remaining text
+    if (lastIndex < content.length) {
+      parts.push(content.substring(lastIndex));
+    }
+
+    return parts;
+  };
 
   return (
-    <div className="flex h-full">
-      {/* Main text area */}
-      <div className="flex-1 p-6">
-        <div className="h-full flex flex-col">
-          {/* Text content */}
-          <div className="flex-1 bg-white border border-gray-200 rounded-lg p-6 overflow-y-auto">
-            {showLabels ? (
-              <TextAnnotator
-                value={getAnnotateValue()}
-                onChange={handleAnnotationChange as any}
-                content={textContent}
-                style={{
-                  lineHeight: '1.6',
-                  fontSize: '16px',
-                  fontFamily: 'inherit'
-                }}
-                getSpan={(span: any) => ({
-                  ...span,
-                  style: {
-                    backgroundColor: `${span.color}20`,
-                    borderBottom: `2px solid ${span.color}`,
-                    padding: '2px 4px',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }
-                })}
-              />
-            ) : (
-              <div className="text-base leading-relaxed whitespace-pre-wrap">
-                {textContent}
-              </div>
-            )}
+    <div className="h-full flex flex-col">
+      <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+        {/* Enhanced Content Display */}
+        <div>
+          <Label className="text-sm font-medium">Content</Label>
+          <div
+            className="mt-1 p-3 border border-gray-300 rounded-lg max-h-60 overflow-y-auto whitespace-pre-wrap cursor-text select-text text-sm"
+            onMouseUp={handleTextSelection}
+            onTouchEnd={handleTextSelection}
+            style={{ userSelect: 'text' }}
+          >
+            {renderContentWithAnnotations()}
           </div>
+          <p className="text-xs text-gray-500 mt-1">
+            {selectedLabel
+              ? `Using label: ${selectedLabel}`
+              : 'Select a label from the ⋮ menu first, then select text to annotate.'}
+          </p>
         </div>
-      </div>
 
-      {/* Right panel - Labels and annotations */}
-      <div className="w-80 border-l border-gray-200 bg-gray-50">
-        <div className="p-4 space-y-4">
-          {/* Controls */}
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900">Labels</h3>
-            <div className="flex items-center space-x-2">
+        {/* Annotation Controls */}
+        {isAnnotating && selectedText && (
+          <div className="p-3 border border-blue-300 bg-blue-50 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-sm font-medium">Selected Text:</Label>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowLabels(!showLabels)}
-                className="h-8 w-8 p-0"
+                onClick={() => setIsAnnotating(false)}
               >
-                {showLabels ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                <XCircle className="h-4 w-4" />
               </Button>
             </div>
+            <div className="mb-2">
+              <Badge variant="outline" className="text-sm">
+                "{selectedText}"
+              </Badge>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {labels.map((label) => (
+                <Button
+                  key={label}
+                  size="sm"
+                  variant="outline"
+                  onClick={() => addAnnotation(label)}
+                  disabled={disabled}
+                >
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  {label}
+                </Button>
+              ))}
+            </div>
           </div>
+        )}
 
-          {/* Label schema */}
-          <div className="space-y-2">
-            {labelSchema.map((label, index) => (
-              <div
-                key={label.id}
-                className={cn(
-                  "flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors",
-                  activeLabel === label.id ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-white hover:bg-gray-50"
-                )}
-                onClick={() => setActiveLabel(label.id)}
-              >
-                <div className="flex items-center space-x-3">
-                  <div
-                    className="w-4 h-4 rounded"
-                    style={{ backgroundColor: label.color }}
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-gray-900">
-                      {index + 1}. {label.name}
-                    </span>
-                    {label.hotkey && (
-                      <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-1 rounded">
-                        {label.hotkey}
+        {/* Existing Annotations */}
+        {annotations.length > 0 && (
+          <div>
+            <Label className="text-sm font-medium">
+              Annotations ({annotations.length})
+            </Label>
+            <div className="mt-1 max-h-32 overflow-y-auto space-y-1 border border-gray-200 rounded-lg p-2">
+              {annotations.map((annotation) => (
+                <div
+                  key={annotation.id}
+                  className="flex items-center justify-between p-2 border border-gray-100 rounded bg-gray-50"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-2">
+                      <Badge variant="secondary" className="text-xs">
+                        {annotation.label}
+                      </Badge>
+                      <span className="text-xs text-gray-600 truncate">
+                        "{annotation.text}"
                       </span>
-                    )}
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => editAnnotation(annotation)}
+                    >
+                      <Edit3 className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => removeAnnotation(annotation.id)}
+                      disabled={disabled}
+                    >
+                      <XCircle className="h-3 w-3" />
+                    </Button>
                   </div>
                 </div>
-                <span className="text-xs text-gray-500">
-                  {annotations.filter(a => a.label === label.name).length}
-                </span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-
-          {/* Current annotations */}
-          <div className="space-y-2">
-            <h4 className="text-sm font-semibold text-gray-700">
-              Annotations ({annotations.length})
-            </h4>
-            
-            {annotations.length === 0 ? (
-              <p className="text-sm text-gray-500 italic">
-                No annotations yet. Select text to start annotating.
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {annotations.map((annotation) => (
-                  <div
-                    key={annotation.id}
-                    className="p-2 bg-white border border-gray-200 rounded text-sm"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-gray-900">
-                        {annotation.label}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeAnnotation(annotation.id)}
-                        className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    <p className="text-gray-600 truncate">
-                      "{annotation.text}"
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Instructions */}
-          <Card className="bg-blue-50 border-blue-200">
-            <CardContent className="p-3">
-              <h4 className="text-sm font-semibold text-blue-900 mb-2">
-                Quick Tips
-              </h4>
-              <ul className="text-xs text-blue-800 space-y-1">
-                <li>• Click and drag to select text</li>
-                <li>• Choose a label from the right panel</li>
-                <li>• Click on annotations to remove them</li>
-                <li>• Toggle labels visibility with the eye icon</li>
-              </ul>
-            </CardContent>
-          </Card>
-        </div>
+        )}
       </div>
+
+      {/* Edit Annotation Modal */}
+      {editingAnnotation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-4 rounded-lg max-w-sm w-full mx-4">
+            <h3 className="text-base font-medium mb-3">Edit Annotation</h3>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs font-medium text-gray-600">
+                  Text
+                </Label>
+                <div className="mt-1 p-2 bg-gray-100 rounded text-sm">
+                  "{editingAnnotation.text}"
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs font-medium text-gray-600">
+                  Label
+                </Label>
+                <select
+                  className="mt-1 w-full p-2 border border-gray-300 rounded text-sm"
+                  value={editingAnnotation.label}
+                  onChange={(e) => saveEdit(e.target.value)}
+                >
+                  {labels.map((label) => (
+                    <option key={label} value={label}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditingAnnotation(null)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

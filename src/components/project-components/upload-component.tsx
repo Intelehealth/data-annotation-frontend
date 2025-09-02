@@ -15,15 +15,23 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
+  Database,
+  Table,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DatasetSelector } from './dataset-selector';
 import { datasetsAPI } from '@/lib/api/datasets';
+import { CSVUploadComponent } from './csv-upload-component';
 
 interface UploadComponentProps {
   projectId: string;
   onFilesSelected: (files: File[]) => void;
   onUploadComplete?: (assets: any[]) => void;
+  onCSVUploaded?: (
+    csvImportId: string,
+    fileName: string,
+    totalRows: number,
+  ) => void;
   className?: string;
 }
 
@@ -31,8 +39,10 @@ export function UploadComponent({
   projectId,
   onFilesSelected,
   onUploadComplete,
+  onCSVUploaded,
   className,
 }: UploadComponentProps) {
+  const [uploadType, setUploadType] = useState<'files' | 'csv'>('files');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
@@ -173,6 +183,11 @@ export function UploadComponent({
     }
   };
 
+  const handleUploadTypeChange = (type: 'files' | 'csv') => {
+    setUploadType(type);
+    clearAllFiles(); // Clear selected files when changing upload type
+  };
+
   const getFileIcon = (file: File) => {
     if (file.type.startsWith('image/'))
       return <Image className="h-5 w-5 text-blue-500" />;
@@ -212,6 +227,34 @@ export function UploadComponent({
 
   return (
     <div className={cn('space-y-6', className)}>
+      {/* Upload Type Tabs */}
+      <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+        <button
+          onClick={() => handleUploadTypeChange('files')}
+          className={cn(
+            'flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
+            uploadType === 'files'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900',
+          )}
+        >
+          <FileText className="h-4 w-4" />
+          <span>Files</span>
+        </button>
+        <button
+          onClick={() => handleUploadTypeChange('csv')}
+          className={cn(
+            'flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
+            uploadType === 'csv'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900',
+          )}
+        >
+          <Table className="h-4 w-4" />
+          <span>CSV</span>
+        </button>
+      </div>
+
       {/* Dataset Selection */}
       <DatasetSelector
         projectId={projectId}
@@ -219,157 +262,171 @@ export function UploadComponent({
         onDatasetChange={setSelectedDatasetId}
       />
 
-      {/* Upload Area */}
-      <div
-        className={cn(
-          'border-2 border-dashed rounded-lg p-6 text-center transition-all duration-200 cursor-pointer',
-          isDragOver
-            ? 'border-blue-400 bg-blue-50 scale-105'
-            : 'border-gray-300 hover:border-blue-300 hover:bg-gray-50',
-        )}
-        onDrop={handleFileDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onClick={() => document.getElementById('fileInput')?.click()}
-      >
-        <div className="flex flex-col items-center space-y-3">
+      {/* CSV Upload Component */}
+      {uploadType === 'csv' && (
+        <CSVUploadComponent
+          projectId={projectId}
+          selectedDatasetId={selectedDatasetId}
+          onCSVUploaded={onCSVUploaded}
+        />
+      )}
+
+      {/* File Upload Component */}
+      {uploadType === 'files' && (
+        <>
+          {/* Upload Area */}
           <div
             className={cn(
-              'p-3 rounded-full transition-colors',
-              isDragOver ? 'bg-blue-100' : 'bg-gray-100',
+              'border-2 border-dashed rounded-lg p-6 text-center transition-all duration-200 cursor-pointer',
+              isDragOver
+                ? 'border-blue-400 bg-blue-50 scale-105'
+                : 'border-gray-300 hover:border-blue-300 hover:bg-gray-50',
             )}
+            onDrop={handleFileDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onClick={() => document.getElementById('fileInput')?.click()}
           >
-            <CloudUpload
-              className={cn(
-                'h-8 w-8 transition-colors',
-                isDragOver ? 'text-blue-600' : 'text-gray-500',
-              )}
+            <div className="flex flex-col items-center space-y-3">
+              <div
+                className={cn(
+                  'p-3 rounded-full transition-colors',
+                  isDragOver ? 'bg-blue-100' : 'bg-gray-100',
+                )}
+              >
+                <CloudUpload
+                  className={cn(
+                    'h-8 w-8 transition-colors',
+                    isDragOver ? 'text-blue-600' : 'text-gray-500',
+                  )}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-lg font-medium text-gray-900">
+                  {isDragOver
+                    ? 'Drop files here'
+                    : 'Click to upload or drag & drop'}
+                </h3>
+                <p className="text-sm text-gray-500">
+                  Support for images, documents, text files, and audio files
+                </p>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  document.getElementById('fileInput')?.click();
+                }}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Select Files
+              </Button>
+            </div>
+
+            <input
+              id="fileInput"
+              type="file"
+              multiple
+              accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.docx,.doc,.txt,.pdf,.mp3,.wav,.aac,.flac"
+              onChange={handleFileSelect}
+              className="hidden"
             />
           </div>
 
-          <div className="space-y-1">
-            <h3 className="text-lg font-medium text-gray-900">
-              {isDragOver
-                ? 'Drop files here'
-                : 'Click to upload or drag & drop'}
-            </h3>
-            <p className="text-sm text-gray-500">
-              Support for images, documents, text files, and audio files
-            </p>
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-2"
-            onClick={(e) => {
-              e.stopPropagation();
-              document.getElementById('fileInput')?.click();
-            }}
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            Select Files
-          </Button>
-        </div>
-
-        <input
-          id="fileInput"
-          type="file"
-          multiple
-          accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.docx,.doc,.txt,.pdf,.mp3,.wav,.aac,.flac"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
-      </div>
-
-      {/* Selected Files */}
-      {selectedFiles.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium text-gray-700">
-              Selected Files ({selectedFiles.length})
-            </Label>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearAllFiles}
-              className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
-            >
-              <X className="h-4 w-4 mr-1" />
-              Clear All
-            </Button>
-          </div>
-
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {selectedFiles.map((file, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
-              >
-                <div className="flex items-center space-x-3">
-                  {getFileIcon(file)}
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-900 text-sm truncate max-w-48">
-                      {file.name}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {formatFileSize(file.size)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {getStatusIcon(uploadStatus[file.name] || 'pending')}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeFile(index)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50 h-7 w-7 p-0"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
+          {/* Selected Files */}
+          {selectedFiles.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium text-gray-700">
+                  Selected Files ({selectedFiles.length})
+                </Label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearAllFiles}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Clear All
+                </Button>
               </div>
-            ))}
-          </div>
 
-          <div className="pt-2">
-            <Button
-              className="w-full"
-              size="sm"
-              onClick={handleUpload}
-              disabled={isUploading || !selectedDatasetId}
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload {selectedFiles.length} Files
-                </>
-              )}
-            </Button>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {selectedFiles.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+                  >
+                    <div className="flex items-center space-x-3">
+                      {getFileIcon(file)}
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900 text-sm truncate max-w-48">
+                          {file.name}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {formatFileSize(file.size)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      {getStatusIcon(uploadStatus[file.name] || 'pending')}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeFile(index)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 h-7 w-7 p-0"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  className="w-full"
+                  size="sm"
+                  onClick={handleUpload}
+                  disabled={isUploading || !selectedDatasetId}
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload {selectedFiles.length} Files
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Supported Formats Info */}
+          <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+            <div className="flex items-center space-x-2 mb-2">
+              <File className="h-4 w-4 text-blue-600" />
+              <span className="text-sm font-medium text-blue-900">
+                Supported Formats
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs text-blue-700">
+              <div>• Images: JPG, PNG, GIF, BMP, WebP</div>
+              <div>• Documents: DOCX, DOC, PDF, TXT</div>
+              <div>• Audio: MP3, WAV, AAC, FLAC</div>
+              <div>• Max Size: 50MB per file</div>
+            </div>
           </div>
-        </div>
+        </>
       )}
-
-      {/* Supported Formats Info */}
-      <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-        <div className="flex items-center space-x-2 mb-2">
-          <File className="h-4 w-4 text-blue-600" />
-          <span className="text-sm font-medium text-blue-900">
-            Supported Formats
-          </span>
-        </div>
-        <div className="grid grid-cols-2 gap-2 text-xs text-blue-700">
-          <div>• Images: JPG, PNG, GIF, BMP, WebP</div>
-          <div>• Documents: DOCX, DOC, PDF, TXT</div>
-          <div>• Audio: MP3, WAV, AAC, FLAC</div>
-          <div>• Max Size: 50MB per file</div>
-        </div>
-      </div>
     </div>
   );
 }

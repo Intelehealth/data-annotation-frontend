@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { 
-  ChevronLeft, 
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  ChevronLeft,
   ChevronRight,
   Upload,
   Database,
@@ -11,9 +11,9 @@ import {
   Settings,
   BarChart3,
   Tag,
-  Layers
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+  Layers,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface ProjectSidebarProps {
   activeTab: string;
@@ -22,46 +22,57 @@ interface ProjectSidebarProps {
   className?: string;
 }
 
-export function ProjectSidebar({ activeTab, onTabChange, projectId, className }: ProjectSidebarProps) {
+export function ProjectSidebar({
+  activeTab,
+  onTabChange,
+  projectId,
+  className,
+}: ProjectSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(true);
 
   const projectMenuItems = [
     {
-      id: "upload",
-      label: "Upload Data",
+      id: 'upload',
+      label: 'Upload Data',
       icon: Upload,
-      description: "Add new files to project"
+      description: 'Add new files to project',
     },
     {
-      id: "dataset",
-      label: "Dataset",
+      id: 'dataset',
+      label: 'Dataset',
       icon: Database,
-      description: "Manage project files"
+      description: 'Manage project files',
     },
     {
-      id: "annotations",
-      label: "Annotations",
+      id: 'field-selection',
+      label: 'Field Selection',
       icon: FileText,
-      description: "Create and manage annotations"
+      description: 'Configure CSV annotation fields',
     },
     {
-      id: "classes",
-      label: "Classes & Tags",
+      id: 'annotations',
+      label: 'Annotations',
+      icon: FileText,
+      description: 'Create and manage annotations',
+    },
+    {
+      id: 'classes',
+      label: 'Classes & Tags',
       icon: Tag,
-      description: "Define annotation classes"
+      description: 'Define annotation classes',
     },
     {
-      id: "versions",
-      label: "Versions",
+      id: 'versions',
+      label: 'Versions',
       icon: Layers,
-      description: "Manage dataset versions"
+      description: 'Manage dataset versions',
     },
     {
-      id: "analytics",
-      label: "Analytics",
+      id: 'analytics',
+      label: 'Analytics',
       icon: BarChart3,
-      description: "View project statistics"
-    }
+      description: 'View project statistics',
+    },
   ];
 
   const handleTabClick = (tabId: string) => {
@@ -69,11 +80,11 @@ export function ProjectSidebar({ activeTab, onTabChange, projectId, className }:
   };
 
   return (
-    <aside 
+    <aside
       className={cn(
-        "bg-white border-r border-gray-200/80 flex flex-col transition-all duration-300 shadow-sm",
-        isCollapsed ? "w-16" : "w-64",
-        className
+        'bg-white border-r border-gray-200/80 flex flex-col transition-all duration-300 shadow-sm',
+        isCollapsed ? 'w-16' : 'w-64',
+        className,
       )}
     >
       {/* Project Header */}
@@ -116,31 +127,37 @@ export function ProjectSidebar({ activeTab, onTabChange, projectId, className }:
             </h3>
           </div>
         )}
-        
+
         {projectMenuItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
-          
+
           return (
             <button
               key={item.id}
               onClick={() => handleTabClick(item.id)}
               className={cn(
-                "w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-left group",
-                isActive 
-                  ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md" 
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
-                isCollapsed && "justify-center px-2"
+                'w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-left group',
+                isActive
+                  ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900',
+                isCollapsed && 'justify-center px-2',
               )}
               title={isCollapsed ? item.label : undefined}
             >
-              <Icon className={cn(
-                "h-4 w-4 flex-shrink-0 transition-colors",
-                isActive ? "text-white" : "text-gray-400 group-hover:text-gray-600"
-              )} />
+              <Icon
+                className={cn(
+                  'h-4 w-4 flex-shrink-0 transition-colors',
+                  isActive
+                    ? 'text-white'
+                    : 'text-gray-400 group-hover:text-gray-600',
+                )}
+              />
               {!isCollapsed && (
                 <div className="flex-1 min-w-0">
-                  <span className="font-medium text-sm truncate block">{item.label}</span>
+                  <span className="font-medium text-sm truncate block">
+                    {item.label}
+                  </span>
                   <span className="text-xs text-gray-500 truncate block">
                     {isActive ? item.description : item.description}
                   </span>
@@ -159,10 +176,10 @@ export function ProjectSidebar({ activeTab, onTabChange, projectId, className }:
         <Button
           variant="ghost"
           className={cn(
-            "w-full justify-start text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors",
-            isCollapsed && "justify-center px-2"
+            'w-full justify-start text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors',
+            isCollapsed && 'justify-center px-2',
           )}
-          title={isCollapsed ? "Project Settings" : undefined}
+          title={isCollapsed ? 'Project Settings' : undefined}
         >
           <Settings className="h-4 w-4 flex-shrink-0" />
           {!isCollapsed && (
