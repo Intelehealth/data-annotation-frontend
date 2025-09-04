@@ -17,7 +17,8 @@ export default function GoogleOAuth({
   const handleGoogleAuth = () => {
     try {
       // Redirect to backend Google OAuth endpoint
-      const backendUrl = process.env.NEXT_URL || 'http://localhost:3001';
+      const backendUrl =
+        process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
       window.location.href = `${backendUrl}/auth/google`;
     } catch (error) {
       console.error('Google OAuth error:', error);

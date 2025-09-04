@@ -28,7 +28,8 @@ export default function AuthCallbackPage() {
         localStorage.setItem('accessToken', token);
 
         // Fetch user profile data using the token
-        const backendUrl = process.env.NEXT_URL || 'http://localhost:3001';
+        const backendUrl =
+          process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
         const response = await fetch(`${backendUrl}/users/`, {
           headers: {
             Authorization: `Bearer ${token}`,
