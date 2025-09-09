@@ -17,7 +17,6 @@ export interface AnnotationData {
 
 export interface CreateAnnotationRequest {
   csvImportId: string;
-  projectId: string;
   csvRowIndex: number;
   fieldName: string;
   type:
@@ -38,7 +37,6 @@ export interface CreateAnnotationRequest {
 export interface Annotation {
   _id: string;
   csvImportId: string;
-  projectId: string;
   userId: string;
   csvRowIndex: number;
   fieldName: string;

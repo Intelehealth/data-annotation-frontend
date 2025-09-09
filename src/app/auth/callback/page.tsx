@@ -27,26 +27,33 @@ export default function AuthCallbackPage() {
         // Store the token
         localStorage.setItem('accessToken', token);
 
-        // Fetch user profile data using the token
-        const backendUrl =
-          process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-        const response = await fetch(`${backendUrl}/users/`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (response.ok) {
-          const userData = await response.json();
+        // Decode JWT token to get user data
+        try {
+          const tokenParts = token.split('.');
+          const payload = JSON.parse(atob(tokenParts[1]));
+          
+          const userData = {
+            _id: payload.sub,
+            email: payload.email,
+            firstName: payload.firstName,
+            lastName: payload.lastName,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          
           localStorage.setItem('user', JSON.stringify(userData));
+
+          // Dispatch custom event to notify AuthContext
+          window.dispatchEvent(new CustomEvent('auth-updated'));
 
           setStatus('success');
           setMessage('Authentication successful! Redirecting to dashboard...');
 
           setTimeout(() => router.push('/dashboard'), 1500);
-        } else {
-          throw new Error('Failed to fetch user data');
+        } catch (jwtError) {
+          console.error('JWT decode error:', jwtError);
+          throw new Error('Failed to decode authentication token');
         }
       } catch (error) {
         console.error('Auth callback error:', error);

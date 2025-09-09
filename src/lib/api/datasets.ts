@@ -1,93 +1,124 @@
-import api from '../api';
+import axios from 'axios';
 
-// Types for dataset API
-export interface CreateDatasetDto {
-  projectId: string;
-  name: string;
-  description: string;
-}
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export interface DatasetResponse {
   _id: string;
-  projectId: string;
   userId: string;
   name: string;
   description: string;
+  datasetType: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface AssetUploadResponse {
-  _id: string;
-  datasetId: string;
-  projectId: string;
-  userId: string;
-  sourceUri: string;
-  assetType: string;
-  status: string;
-  aiAnnotationStatus: string;
-  metadata: Record<string, any>;
-  createdAt: string;
-  updatedAt: string;
+export interface CreateDatasetRequest {
+  name: string;
+  description: string;
+  datasetType: string;
 }
 
-// Datasets API endpoints
+export interface UpdateDatasetRequest {
+  name?: string;
+  description?: string;
+  datasetType?: string;
+}
+
 export const datasetsAPI = {
+  // Get all datasets for the current user
+  async getAll(): Promise<DatasetResponse[]> {
+    const token = localStorage.getItem('accessToken');
+    const response = await axios.get(`${API_BASE_URL}/datasets`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    return response.data;
+  },
+
+  // Search datasets
+  async search(query: string): Promise<DatasetResponse[]> {
+    const token = localStorage.getItem('accessToken');
+    const response = await axios.get(
+      `${API_BASE_URL}/datasets/search?q=${encodeURIComponent(query)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+    return response.data;
+  },
+
+  // Get a specific dataset
+  async getById(id: string): Promise<DatasetResponse> {
+    const token = localStorage.getItem('accessToken');
+    const response = await axios.get(`${API_BASE_URL}/datasets/${id}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    return response.data;
+  },
+
   // Create a new dataset
-  create: async (datasetData: CreateDatasetDto): Promise<DatasetResponse> => {
-    const response = await api.post('/datasets', datasetData);
-    return response.data;
-  },
-
-  // Get all datasets for the authenticated user
-  getAll: async (): Promise<DatasetResponse[]> => {
-    const response = await api.get('/datasets');
-    return response.data;
-  },
-
-  // Get datasets by project ID
-  getByProject: async (projectId: string): Promise<DatasetResponse[]> => {
-    const response = await api.get(`/datasets/project/${projectId}`);
-    return response.data;
-  },
-
-  // Get a single dataset by ID
-  getById: async (datasetId: string): Promise<DatasetResponse> => {
-    const response = await api.get(`/datasets/${datasetId}`);
+  async create(data: CreateDatasetRequest): Promise<DatasetResponse> {
+    const token = localStorage.getItem('accessToken');
+    const response = await axios.post(`${API_BASE_URL}/datasets`, data, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
     return response.data;
   },
 
   // Update a dataset
-  update: async (
-    datasetId: string,
-    datasetData: Partial<CreateDatasetDto>,
-  ): Promise<DatasetResponse> => {
-    const response = await api.patch(`/datasets/${datasetId}`, datasetData);
+  async update(
+    id: string,
+    data: UpdateDatasetRequest,
+  ): Promise<DatasetResponse> {
+    const token = localStorage.getItem('accessToken');
+    const response = await axios.patch(`${API_BASE_URL}/datasets/${id}`, data, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
     return response.data;
   },
 
   // Delete a dataset
-  delete: async (datasetId: string): Promise<void> => {
-    await api.delete(`/datasets/${datasetId}`);
+  async delete(id: string): Promise<void> {
+    const token = localStorage.getItem('accessToken');
+    await axios.delete(`${API_BASE_URL}/datasets/${id}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
   },
 
-  // Upload assets to dataset
-  uploadAssets: async (
-    datasetId: string,
-    files: File[],
-  ): Promise<AssetUploadResponse[]> => {
+  // Upload assets to a dataset
+  async uploadAssets(datasetId: string, files: File[]): Promise<any[]> {
+    const token = localStorage.getItem('accessToken');
     const formData = new FormData();
-    formData.append('datasetId', datasetId);
-    
+
+    // Add all files to FormData
     files.forEach((file) => {
       formData.append('files', file);
     });
 
-    const response = await api.post('/datasets/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
+    const response = await axios.post(
+      `${API_BASE_URL}/datasets/${datasetId}/assets`,
+      formData,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
       },
-    });
+    );
+
     return response.data;
   },
 };

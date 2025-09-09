@@ -10,7 +10,6 @@ export interface CSVRowData {
 export interface CSVImport {
   _id: string;
   datasetId: string;
-  projectId: string;
   userId: string;
   fileName: string;
   originalFileName: string;
@@ -46,9 +45,9 @@ export interface AnnotationField {
 export interface AnnotationConfig {
   _id: string;
   csvImportId: string;
-  projectId: string;
   userId: string;
   annotationFields: AnnotationField[];
+  annotationLabels?: any[]; // Add annotation labels
   rowAnnotations: any[];
   totalRows: number;
   completedRows: number;
@@ -85,6 +84,14 @@ export class CSVImportsAPI {
     return response.data;
   }
 
+  // Get CSV imports by dataset ID
+  static async getByDataset(datasetId: string): Promise<CSVImport[]> {
+    const response = await jsonApi.get(
+      `/csv-processing/dataset/${datasetId}/imports`,
+    );
+    return response.data;
+  }
+
   // Get annotation progress
   static async getAnnotationProgress(csvImportId: string): Promise<{
     totalRows: number;
@@ -95,6 +102,17 @@ export class CSVImportsAPI {
   }> {
     const response = await jsonApi.get(
       `/csv-processing/field-selection/${csvImportId}/progress`,
+    );
+    return response.data;
+  }
+
+  // Delete CSV import
+  static async deleteCSVImport(
+    datasetId: string,
+    csvImportId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await jsonApi.delete(
+      `/datasets/${datasetId}/csv-imports/${csvImportId}`,
     );
     return response.data;
   }

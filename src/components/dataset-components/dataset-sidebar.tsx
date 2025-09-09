@@ -15,63 +15,39 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface ProjectSidebarProps {
+interface DatasetSidebarProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
-  projectId: string;
+  datasetId: string;
   className?: string;
 }
 
-export function ProjectSidebar({
+export function DatasetSidebar({
   activeTab,
   onTabChange,
-  projectId,
+  datasetId,
   className,
-}: ProjectSidebarProps) {
+}: DatasetSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(true);
 
-  const projectMenuItems = [
+  const datasetMenuItems = [
+    {
+      id: 'overview',
+      label: 'Data Overview',
+      icon: Database,
+      description: 'View dataset information',
+    },
     {
       id: 'upload',
-      label: 'Upload Data',
+      label: 'Upload',
       icon: Upload,
-      description: 'Add new files to project',
+      description: 'Add new files to dataset',
     },
     {
-      id: 'dataset',
-      label: 'Dataset',
-      icon: Database,
-      description: 'Manage project files',
-    },
-    {
-      id: 'field-selection',
-      label: 'Field Selection',
+      id: 'field-configuration',
+      label: 'Field Configuration',
       icon: FileText,
       description: 'Configure CSV annotation fields',
-    },
-    {
-      id: 'annotations',
-      label: 'Annotations',
-      icon: FileText,
-      description: 'Create and manage annotations',
-    },
-    {
-      id: 'classes',
-      label: 'Classes & Tags',
-      icon: Tag,
-      description: 'Define annotation classes',
-    },
-    {
-      id: 'versions',
-      label: 'Versions',
-      icon: Layers,
-      description: 'Manage dataset versions',
-    },
-    {
-      id: 'analytics',
-      label: 'Analytics',
-      icon: BarChart3,
-      description: 'View project statistics',
     },
   ];
 
@@ -87,7 +63,7 @@ export function ProjectSidebar({
         className,
       )}
     >
-      {/* Project Header */}
+      {/* Dataset Header */}
       <div className="p-4 border-b border-gray-100">
         <div className="flex items-center justify-between">
           {!isCollapsed && (
@@ -97,9 +73,9 @@ export function ProjectSidebar({
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-gray-900 truncate">
-                  Project {projectId.slice(0, 8)}...
+                  Dataset {datasetId.slice(0, 8)}...
                 </p>
-                <p className="text-xs text-gray-500">Data Annotation</p>
+                <p className="text-xs text-gray-500">Data Management</p>
               </div>
             </div>
           )}
@@ -118,17 +94,17 @@ export function ProjectSidebar({
         </div>
       </div>
 
-      {/* Project Navigation */}
+      {/* Dataset Navigation */}
       <nav className="flex-1 p-3 space-y-1">
         {!isCollapsed && (
           <div className="mb-3">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-2">
-              Project Menu
+              Dataset Menu
             </h3>
           </div>
         )}
 
-        {projectMenuItems.map((item) => {
+        {datasetMenuItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
 
@@ -171,7 +147,7 @@ export function ProjectSidebar({
         })}
       </nav>
 
-      {/* Project Settings */}
+      {/* Dataset Settings */}
       <div className="p-3 border-t border-gray-100">
         <Button
           variant="ghost"
@@ -179,11 +155,11 @@ export function ProjectSidebar({
             'w-full justify-start text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors',
             isCollapsed && 'justify-center px-2',
           )}
-          title={isCollapsed ? 'Project Settings' : undefined}
+          title={isCollapsed ? 'Dataset Settings' : undefined}
         >
           <Settings className="h-4 w-4 flex-shrink-0" />
           {!isCollapsed && (
-            <span className="ml-3 text-sm">Project Settings</span>
+            <span className="ml-3 text-sm">Dataset Settings</span>
           )}
         </Button>
       </div>

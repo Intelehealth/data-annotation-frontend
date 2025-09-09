@@ -33,16 +33,12 @@ import {
   AnnotationConfig,
   AnnotationField,
 } from '@/lib/api/csv-imports';
-import {
-  projectsAPI,
-  ProjectResponse,
-  AnnotationLabel,
-} from '@/lib/api/projects';
+import { fieldSelectionAPI } from '@/lib/api';
 
 // Import annotation components
-import { TextAnnotationTool } from '@/components/project-components/text-annotation-tool';
-import { ImageAnnotationTool } from '@/components/project-components/image-annotation-tool';
-import { AudioAnnotationTool } from '@/components/project-components/audio-annotation-tool';
+import { TextAnnotationTool } from '@/components/annotation-components/text-annotation-tool';
+import { ImageAnnotationTool } from '@/components/annotation-components/image-annotation-tool';
+import { AudioAnnotationTool } from '@/components/annotation-components/audio-annotation-tool';
 
 interface Task {
   id: string;
@@ -60,12 +56,12 @@ interface Task {
 
 interface AnnotationWorkbenchProps {
   csvImportId: string;
-  projectId: string;
+  datasetId: string;
 }
 
 export function AnnotationWorkbench({
   csvImportId,
-  projectId,
+  datasetId,
 }: AnnotationWorkbenchProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
@@ -84,7 +80,6 @@ export function AnnotationWorkbench({
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [showContent, setShowContent] = useState(false);
   const [csvRowsCollapsed, setCsvRowsCollapsed] = useState(false);
-  const [project, setProject] = useState<ProjectResponse | null>(null);
   const [showLabelsModal, setShowLabelsModal] = useState(false);
   const labelsModalRef = useRef<HTMLDivElement>(null);
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
@@ -111,6 +106,9 @@ export function AnnotationWorkbench({
 
   // Load CSV import data and annotation config
   useEffect(() => {
+    console.log('AnnotationWorkbench useEffect triggered');
+    console.log('csvImportId:', csvImportId);
+    console.log('datasetId:', datasetId);
     const loadData = async () => {
       try {
         setLoading(true);
@@ -118,31 +116,66 @@ export function AnnotationWorkbench({
 
         console.log('Loading data for csvImportId:', csvImportId);
 
-        // Load project data first
-        console.log('Loading project data...');
-        const projectData = await projectsAPI.getById(projectId);
-        console.log('Project data loaded:', projectData);
-        setProject(projectData);
-
         // Load CSV import data
         console.log('Loading CSV import data...');
         const csvData = await CSVImportsAPI.findOne(csvImportId);
         console.log('CSV import data loaded:', csvData);
         setCsvImport(csvData);
 
-        // Load annotation config
-        console.log('Loading annotation config...');
+        // Load annotation config using datasetId
+        console.log('Loading annotation config for dataset:', datasetId);
         try {
-          const config = await CSVImportsAPI.getAnnotationConfig(csvImportId);
-          console.log('Annotation config loaded:', config);
-          setAnnotationConfig(config);
+          console.log(
+            'Making API call to fieldSelectionAPI.getDatasetFieldConfig...',
+          );
+          const config = await fieldSelectionAPI.getDatasetFieldConfig(
+            datasetId,
+          );
+          console.log('API call completed successfully');
+          console.log('Dataset field config loaded:', config);
+          console.log('Config annotationFields:', config?.annotationFields);
+          console.log('Config annotationLabels:', config?.annotationLabels);
+          if (config) {
+            // Transform the dataset config to match the expected AnnotationConfig format
+            const annotationConfig: AnnotationConfig = {
+              _id: config._id || '',
+              csvImportId: csvImportId,
+              userId: config.userId || '',
+              annotationFields: config.annotationFields || [],
+              annotationLabels: config.annotationLabels || [],
+              rowAnnotations: [],
+              totalRows: csvData.totalRows,
+              completedRows: 0,
+              status: 'active',
+              createdAt: config.createdAt || new Date().toISOString(),
+              updatedAt: config.updatedAt || new Date().toISOString(),
+            };
+            console.log('Transformed annotation config:', annotationConfig);
+            console.log(
+              'Annotation fields count:',
+              annotationConfig.annotationFields.length,
+            );
+            console.log(
+              'Annotation labels count:',
+              annotationConfig.annotationLabels?.length || 0,
+            );
+            setAnnotationConfig(annotationConfig);
+          } else {
+            throw new Error('No field configuration found');
+          }
         } catch (configError) {
+          console.log('Error loading annotation config:', configError);
+          console.log(
+            'Config error details:',
+            configError instanceof Error
+              ? configError.message
+              : String(configError),
+          );
           console.log('No annotation config found, creating default config...');
           // If no annotation config exists, create a default one
           const defaultConfig: AnnotationConfig = {
             _id: '',
             csvImportId,
-            projectId,
             userId: '',
             annotationFields: [],
             rowAnnotations: [],
@@ -239,7 +272,7 @@ export function AnnotationWorkbench({
     if (csvImportId) {
       loadData();
     }
-  }, [csvImportId]);
+  }, [csvImportId, datasetId]);
 
   const currentTask = tasks[currentTaskIndex];
 
@@ -302,7 +335,7 @@ export function AnnotationWorkbench({
 
   // Export annotations to CSV
   const exportAnnotationsToCSV = useCallback(async () => {
-    if (!csvImport || !project || annotations.length === 0) {
+    if (!csvImport || annotations.length === 0) {
       console.log('Cannot export: missing data or no annotations');
       return;
     }
@@ -407,7 +440,7 @@ export function AnnotationWorkbench({
       console.error('Error exporting CSV:', error);
       setError('Failed to export CSV');
     }
-  }, [csvImport, project, annotations, getAnnotationFields]);
+  }, [csvImport, annotations, getAnnotationFields]);
 
   // Autosave functionality
   const saveProgress = useCallback(async () => {
@@ -429,7 +462,6 @@ export function AnnotationWorkbench({
           // Update existing annotation
           await AnnotationsAPI.update(annotation._id, {
             csvImportId,
-            projectId,
             csvRowIndex: currentTask.rowIndex,
             fieldName: annotation.fieldName,
             type: annotation.type as any,
@@ -443,7 +475,6 @@ export function AnnotationWorkbench({
           // Create new annotation (either no ID or temporary ID)
           const newAnnotation = await AnnotationsAPI.create({
             csvImportId,
-            projectId,
             csvRowIndex: currentTask.rowIndex,
             fieldName: annotation.fieldName,
             type: annotation.type as any,
@@ -473,7 +504,7 @@ export function AnnotationWorkbench({
     } catch (err) {
       console.error('Error saving progress:', err);
     }
-  }, [currentTask, metadata, annotations, csvImportId, projectId]);
+  }, [currentTask, metadata, annotations, csvImportId]);
 
   // Auto-save every 3 seconds
   useEffect(() => {
@@ -650,10 +681,9 @@ export function AnnotationWorkbench({
       return '';
     };
 
-    // Get available labels from project (you'll need to fetch this from your project schema)
-    // For now, using field names as labels
-    // Get labels from project annotation labels, not from field names
-    const labels = project?.annotationLabels?.map((label) => label.name) || [];
+    // Get available labels from annotation config
+    const labels: string[] =
+      annotationConfig?.annotationLabels?.map((label) => label.name) || [];
 
     // Render annotation tools based on field types
     const textFields = annotationFields.filter(
@@ -721,13 +751,12 @@ export function AnnotationWorkbench({
                 label: ann.label,
               }))}
               labels={labels}
-              annotationLabels={project?.annotationLabels || []}
+              annotationLabels={annotationConfig?.annotationLabels || []}
               selectedLabel={selectedLabel}
               onAnnotationChange={(newAnnotations) => {
                 const updatedAnnotations = newAnnotations.map((ann) => ({
                   _id: ann.id,
                   csvImportId,
-                  projectId,
                   userId: '',
                   csvRowIndex: currentTask.rowIndex,
                   fieldName: selectedField.fieldName,
@@ -767,13 +796,12 @@ export function AnnotationWorkbench({
                 imageUrl: ann.data.imageUrl || '', // Add imageUrl from annotation data
               }))}
               labels={labels}
-              annotationLabels={project?.annotationLabels || []}
+              annotationLabels={annotationConfig?.annotationLabels || []}
               selectedLabel={selectedLabel}
               onAnnotationChange={(newAnnotations) => {
                 const updatedAnnotations = newAnnotations.map((ann) => ({
                   _id: ann.id,
                   csvImportId,
-                  projectId,
                   userId: '',
                   csvRowIndex: currentTask.rowIndex,
                   fieldName: selectedField.fieldName,
@@ -817,13 +845,12 @@ export function AnnotationWorkbench({
                 label: ann.label,
               }))}
               labels={labels}
-              annotationLabels={project?.annotationLabels || []}
+              annotationLabels={annotationConfig?.annotationLabels || []}
               selectedLabel={selectedLabel}
               onAnnotationChange={(newAnnotations) => {
                 const updatedAnnotations = newAnnotations.map((ann) => ({
                   _id: ann.id,
                   csvImportId,
-                  projectId,
                   userId: '',
                   csvRowIndex: currentTask.rowIndex,
                   fieldName: selectedField.fieldName,
@@ -1316,33 +1343,50 @@ export function AnnotationWorkbench({
                               </div>
 
                               <div className="space-y-2">
-                                {project?.annotationLabels?.map((label) => (
-                                  <div
-                                    key={label.name}
-                                    className="flex items-center justify-between p-2 rounded-md hover:bg-gray-50 transition-colors cursor-pointer"
-                                    onClick={() => {
-                                      setSelectedLabel(label.name);
-                                      setShowLabelsModal(false);
-                                    }}
-                                  >
-                                    <span className="text-sm text-gray-700">
-                                      {label.name}
-                                    </span>
+                                {annotationConfig?.annotationLabels?.map(
+                                  (label, index) => (
                                     <div
-                                      className="w-3 h-3 rounded-full"
-                                      style={{
-                                        backgroundColor:
-                                          label.color || '#6B7280',
+                                      key={index}
+                                      className="flex items-center justify-between p-2 border border-gray-200 rounded-md hover:bg-gray-50 cursor-pointer"
+                                      onClick={() => {
+                                        setSelectedLabel(label.name);
+                                        setShowLabelsModal(false);
                                       }}
-                                    />
-                                  </div>
-                                ))}
+                                    >
+                                      <div className="flex items-center space-x-3">
+                                        <div
+                                          className="w-4 h-4 rounded-full border border-gray-300"
+                                          style={{
+                                            backgroundColor: label.color,
+                                          }}
+                                        ></div>
+                                        <div>
+                                          <p className="text-sm font-medium text-gray-900">
+                                            {label.name}
+                                          </p>
+                                          {label.description && (
+                                            <p className="text-xs text-gray-500">
+                                              {label.description}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {label.hotkey && (
+                                        <div className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                                          {label.hotkey}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ),
+                                ) || []}
                               </div>
 
-                              {(!project?.annotationLabels ||
-                                project.annotationLabels.length === 0) && (
+                              {(!annotationConfig?.annotationLabels ||
+                                annotationConfig.annotationLabels.length ===
+                                  0) && (
                                 <div className="text-center py-4 text-gray-500 text-sm">
-                                  No labels available
+                                  No labels available. Please configure labels
+                                  in the field configuration.
                                 </div>
                               )}
                             </div>

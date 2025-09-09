@@ -19,12 +19,10 @@ import {
   Table,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { DatasetSelector } from './dataset-selector';
 import { datasetsAPI } from '@/lib/api/datasets';
 import { CSVUploadComponent } from './csv-upload-component';
 
 interface UploadComponentProps {
-  projectId: string;
   onFilesSelected: (files: File[]) => void;
   onUploadComplete?: (assets: any[]) => void;
   onCSVUploaded?: (
@@ -36,7 +34,6 @@ interface UploadComponentProps {
 }
 
 export function UploadComponent({
-  projectId,
   onFilesSelected,
   onUploadComplete,
   onCSVUploaded,
@@ -256,16 +253,22 @@ export function UploadComponent({
       </div>
 
       {/* Dataset Selection */}
-      <DatasetSelector
-        projectId={projectId}
-        selectedDatasetId={selectedDatasetId}
-        onDatasetChange={setSelectedDatasetId}
-      />
+      <div className="space-y-2">
+        <Label htmlFor="dataset-select">Select Dataset</Label>
+        <select
+          id="dataset-select"
+          value={selectedDatasetId}
+          onChange={(e) => setSelectedDatasetId(e.target.value)}
+          className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        >
+          <option value="">Choose a dataset...</option>
+          {/* You can add dataset options here if needed */}
+        </select>
+      </div>
 
       {/* CSV Upload Component */}
       {uploadType === 'csv' && (
         <CSVUploadComponent
-          projectId={projectId}
           selectedDatasetId={selectedDatasetId}
           onCSVUploaded={onCSVUploaded}
         />

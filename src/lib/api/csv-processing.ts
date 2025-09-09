@@ -53,23 +53,45 @@ export interface CSVImportStatus {
   completedAt?: string;
 }
 
+export interface HeaderValidationError {
+  errorType:
+    | 'MISSING_COLUMN'
+    | 'EXTRA_COLUMN'
+    | 'COLUMN_ORDER_MISMATCH'
+    | 'COLUMN_NAME_MISMATCH';
+  columnName: string;
+  message: string;
+  expectedColumnName?: string;
+}
+
+export interface HeaderValidationResult {
+  isValid: boolean;
+  errors: HeaderValidationError[];
+  expectedHeaders: string[];
+  newHeaders: string[];
+  datasetId: string;
+  existingImportCount: number;
+}
+
 // CSV Processing API endpoints
 export const csvProcessingAPI = {
   // Upload CSV file
   uploadCSV: async (
     datasetId: string,
-    projectId: string,
     file: File,
   ): Promise<CSVUploadResult> => {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('projectId', projectId);
 
-    const response = await api.post(`/csv-processing/upload/${datasetId}`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
+    const response = await api.post(
+      `/csv-processing/upload/${datasetId}`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       },
-    });
+    );
     return response.data;
   },
 
@@ -84,9 +106,12 @@ export const csvProcessingAPI = {
     csvImportId: string,
     columnMappings: ColumnMapping[],
   ): Promise<ColumnMappingResult> => {
-    const response = await api.post(`/csv-processing/map-columns/${csvImportId}`, {
-      columnMappings,
-    });
+    const response = await api.post(
+      `/csv-processing/map-columns/${csvImportId}`,
+      {
+        columnMappings,
+      },
+    );
     return response.data;
   },
 
@@ -94,13 +119,35 @@ export const csvProcessingAPI = {
   validateAndCreateAssets: async (
     csvImportId: string,
   ): Promise<AssetCreationResult> => {
-    const response = await api.post(`/csv-processing/validate-and-create/${csvImportId}`);
+    const response = await api.post(
+      `/csv-processing/validate-and-create/${csvImportId}`,
+    );
     return response.data;
   },
 
   // Get CSV import status
   getCSVImportStatus: async (csvImportId: string): Promise<CSVImportStatus> => {
     const response = await api.get(`/csv-processing/status/${csvImportId}`);
+    return response.data;
+  },
+
+  // Validate CSV headers before upload
+  validateHeaders: async (
+    datasetId: string,
+    file: File,
+  ): Promise<HeaderValidationResult> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await api.post(
+      `/csv-processing/validate-headers/${datasetId}`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      },
+    );
     return response.data;
   },
 };

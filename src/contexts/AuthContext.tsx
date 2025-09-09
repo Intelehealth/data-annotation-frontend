@@ -46,20 +46,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Check if user is already logged in on app start
-    const token = localStorage.getItem('accessToken');
-    const userData = localStorage.getItem('user');
+    const checkAuthState = () => {
+      const token = localStorage.getItem('accessToken');
+      const userData = localStorage.getItem('user');
 
-    if (token && userData) {
-      try {
-        const parsedUser = JSON.parse(userData);
-        setUser(parsedUser);
-      } catch (error) {
-        console.error('Error parsing user data:', error);
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('user');
+      if (token && userData) {
+        try {
+          const parsedUser = JSON.parse(userData);
+          // Handle case where userData might be an array
+          const user = Array.isArray(parsedUser) ? parsedUser[0] : parsedUser;
+          setUser(user);
+        } catch (error) {
+          console.error('Error parsing user data:', error);
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('user');
+          setUser(null);
+        }
+      } else {
+        setUser(null);
       }
-    }
-    setIsLoading(false);
+      setIsLoading(false);
+    };
+
+    checkAuthState();
+
+    // Listen for custom auth events (when OAuth callback completes)
+    const handleAuthUpdate = () => {
+      checkAuthState();
+    };
+
+    window.addEventListener('auth-updated', handleAuthUpdate);
+
+    return () => {
+      window.removeEventListener('auth-updated', handleAuthUpdate);
+    };
   }, []);
 
   const login = async (email: string, password: string) => {

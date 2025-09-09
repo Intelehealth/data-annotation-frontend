@@ -14,9 +14,14 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
+import {
+  csvProcessingAPI,
+  HeaderValidationResult,
+} from '@/lib/api/csv-processing';
+import { useToast } from '@/components/ui/toast';
+import { useRouter } from 'next/navigation';
 
-interface DataFileUploadComponentProps {
-  projectId: string;
+interface CSVUploadComponentProps {
   selectedDatasetId: string;
   onCSVUploaded?: (
     csvImportId: string,
@@ -26,12 +31,11 @@ interface DataFileUploadComponentProps {
   className?: string;
 }
 
-export function DataFileUploadComponent({
-  projectId,
+export function CSVUploadComponent({
   selectedDatasetId,
   onCSVUploaded,
   className,
-}: DataFileUploadComponentProps) {
+}: CSVUploadComponentProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -44,6 +48,11 @@ export function DataFileUploadComponent({
     sampleRows: Record<string, any>[];
     totalRows: number;
   } | null>(null);
+  const [headerValidation, setHeaderValidation] =
+    useState<HeaderValidationResult | null>(null);
+  const [isValidatingHeaders, setIsValidatingHeaders] = useState(false);
+  const { showToast } = useToast();
+  const router = useRouter();
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -51,6 +60,7 @@ export function DataFileUploadComponent({
       setSelectedFile(file);
       setUploadStatus('idle');
       setCSVPreview(null);
+      setHeaderValidation(null);
     }
   };
 
@@ -58,16 +68,11 @@ export function DataFileUploadComponent({
     event.preventDefault();
     setIsDragOver(false);
     const file = event.dataTransfer.files[0];
-    if (
-      file &&
-      (file.type === 'text/csv' ||
-        file.name.endsWith('.csv') ||
-        file.name.endsWith('.xlsx') ||
-        file.name.endsWith('.xls'))
-    ) {
+    if (file && (file.type === 'text/csv' || file.name.endsWith('.csv'))) {
       setSelectedFile(file);
       setUploadStatus('idle');
       setCSVPreview(null);
+      setHeaderValidation(null);
     }
   };
 
@@ -84,17 +89,26 @@ export function DataFileUploadComponent({
     setSelectedFile(null);
     setUploadStatus('idle');
     setCSVPreview(null);
+    setHeaderValidation(null);
     setUploadProgress(0);
   };
 
   const handleUpload = async () => {
     if (!selectedDatasetId) {
-      alert('Please select a dataset first');
+      showToast({
+        type: 'error',
+        title: 'Dataset Required',
+        description: 'Please select a dataset first',
+      });
       return;
     }
 
     if (!selectedFile) {
-      alert('Please select a CSV file to upload');
+      showToast({
+        type: 'error',
+        title: 'No File Selected',
+        description: 'Please select a CSV file to upload',
+      });
       return;
     }
 
@@ -105,16 +119,11 @@ export function DataFileUploadComponent({
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
-      formData.append('projectId', projectId);
 
       const response = await api.post(
         `/csv-processing/upload/${selectedDatasetId}`,
         formData,
       );
-
-      if (response.status !== 200) {
-        throw new Error('Upload failed');
-      }
 
       const result = response.data;
 
@@ -126,77 +135,96 @@ export function DataFileUploadComponent({
         onCSVUploaded(result.csvImportId, result.fileName, result.totalRows);
       }
 
-      // Show success message
-      alert(`File uploaded successfully! ${result.totalRows} rows processed.`);
+      // Show success toast and redirect
+      showToast({
+        type: 'success',
+        title: 'CSV Upload Successful',
+        description: `${result.totalRows} rows processed successfully`,
+      });
 
-      // Reset form after successful upload
+      // Reset form and redirect after successful upload
       setTimeout(() => {
         removeFile();
+        router.push(`/dataset/${selectedDatasetId}`);
       }, 2000);
     } catch (error: any) {
       console.error('Upload failed:', error);
-      console.error('Error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-      });
       setUploadStatus('error');
-      alert('File upload failed. Please try again.');
+      showToast({
+        type: 'error',
+        title: 'Upload Failed',
+        description: 'Failed to upload CSV file. Please try again.',
+      });
     } finally {
       setIsUploading(false);
     }
   };
 
-  const previewDataFile = async () => {
+  const previewCSV = async () => {
     if (!selectedFile) return;
 
-    // For CSV files, use text reader
-    if (selectedFile.name.endsWith('.csv')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const csv = e.target?.result as string;
-        const lines = csv.split('\n');
-        const columns = lines[0]?.split(',').map((col) => col.trim()) || [];
-        const sampleRows = lines.slice(1, 6).map((line) => {
-          const values = line.split(',').map((val) => val.trim());
-          const row: Record<string, any> = {};
-          columns.forEach((col, index) => {
-            row[col] = values[index] || '';
-          });
-          return row;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const csv = e.target?.result as string;
+      const lines = csv.split('\n');
+      const columns = lines[0]?.split(',').map((col) => col.trim()) || [];
+      const sampleRows = lines.slice(1, 6).map((line) => {
+        const values = line.split(',').map((val) => val.trim());
+        const row: Record<string, any> = {};
+        columns.forEach((col, index) => {
+          row[col] = values[index] || '';
         });
-
-        setCSVPreview({
-          columns,
-          sampleRows,
-          totalRows: lines.length - 1,
-        });
-      };
-      reader.readAsText(selectedFile);
-    } else if (
-      selectedFile.name.endsWith('.xlsx') ||
-      selectedFile.name.endsWith('.xls')
-    ) {
-      // For Excel files, show a message that preview isn't available
-      alert(
-        'Excel file preview is not available in the browser. The file will be processed after upload.',
-      );
-      setCSVPreview({
-        columns: ['Excel file detected'],
-        sampleRows: [
-          { Note: 'Excel files are processed on the server after upload' },
-        ],
-        totalRows: 0,
+        return row;
       });
+
+      setCSVPreview({
+        columns,
+        sampleRows,
+        totalRows: lines.length - 1,
+      });
+    };
+    reader.readAsText(selectedFile);
+  };
+
+  const validateHeaders = async () => {
+    if (!selectedFile || !selectedDatasetId) return;
+
+    setIsValidatingHeaders(true);
+    try {
+      const validation = await csvProcessingAPI.validateHeaders(
+        selectedDatasetId,
+        selectedFile,
+      );
+      setHeaderValidation(validation);
+
+      if (!validation.isValid) {
+        showToast({
+          type: 'error',
+          title: 'Header Validation Failed',
+          description: `Found ${validation.errors.length} header mismatch(es). Please check the details below.`,
+        });
+      } else {
+        showToast({
+          type: 'success',
+          title: 'Headers Validated',
+          description: 'CSV headers match existing files in this dataset.',
+        });
+      }
+    } catch (error: any) {
+      console.error('Header validation failed:', error);
+      showToast({
+        type: 'error',
+        title: 'Validation Error',
+        description: 'Failed to validate CSV headers. Please try again.',
+      });
+    } finally {
+      setIsValidatingHeaders(false);
     }
   };
 
   const getFileIcon = (file: File) => {
-    if (file.name.endsWith('.csv')) {
+    if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
       return <FileText className="h-5 w-5 text-blue-500" />;
-    } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-      return <FileText className="h-5 w-5 text-green-500" />;
     }
     return <FileText className="h-5 w-5 text-gray-500" />;
   };
@@ -266,6 +294,8 @@ export function DataFileUploadComponent({
           </div>
 
           <Button
+            variant="outline"
+            size="sm"
             className="mt-2"
             onClick={(e) => {
               e.stopPropagation();
@@ -273,7 +303,7 @@ export function DataFileUploadComponent({
             }}
           >
             <Upload className="h-4 w-4 mr-2" />
-            Select Data File
+            Select CSV File
           </Button>
         </div>
 
@@ -291,7 +321,7 @@ export function DataFileUploadComponent({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-gray-700">
-              Selected Data File
+              Selected CSV File
             </h3>
             <Button
               variant="ghost"
@@ -321,7 +351,21 @@ export function DataFileUploadComponent({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={previewDataFile}
+                onClick={validateHeaders}
+                disabled={isValidatingHeaders}
+                className="h-7 px-2"
+              >
+                {isValidatingHeaders ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                )}
+                Validate Headers
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={previewCSV}
                 className="h-7 px-2"
               >
                 <Eye className="h-3 w-3 mr-1" />
@@ -330,17 +374,15 @@ export function DataFileUploadComponent({
             </div>
           </div>
 
-          {/* Data File Preview */}
+          {/* CSV Preview */}
           {csvPreview && (
             <div className="bg-white rounded-lg border border-gray-200 p-4">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-medium text-gray-900">
-                  File Preview
+                  CSV Preview
                 </h4>
                 <span className="text-xs text-gray-500">
-                  {csvPreview.totalRows > 0
-                    ? `${csvPreview.totalRows} total rows`
-                    : 'Preview not available'}
+                  {csvPreview.totalRows} total rows
                 </span>
               </div>
 
@@ -377,12 +419,132 @@ export function DataFileUploadComponent({
             </div>
           )}
 
+          {/* Header Validation Results */}
+          {headerValidation && (
+            <div
+              className={cn(
+                'rounded-lg border p-4',
+                headerValidation.isValid
+                  ? 'bg-green-50 border-green-200'
+                  : 'bg-red-50 border-red-200',
+              )}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h4
+                  className={cn(
+                    'text-sm font-medium',
+                    headerValidation.isValid
+                      ? 'text-green-900'
+                      : 'text-red-900',
+                  )}
+                >
+                  Header Validation Results
+                </h4>
+                <span
+                  className={cn(
+                    'text-xs px-2 py-1 rounded-full',
+                    headerValidation.isValid
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-red-100 text-red-800',
+                  )}
+                >
+                  {headerValidation.isValid
+                    ? 'Valid'
+                    : `${headerValidation.errors.length} Error(s)`}
+                </span>
+              </div>
+
+              {headerValidation.isValid ? (
+                <div className="text-sm text-green-700">
+                  <p className="mb-2">
+                    ✅ CSV headers match existing files in this dataset.
+                  </p>
+                  <p className="text-xs text-green-600">
+                    Found {headerValidation.existingImportCount} existing CSV
+                    file(s) with matching headers.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="text-sm text-red-700">
+                    <p className="mb-2">
+                      ❌ Header validation failed. The following issues were
+                      found:
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {headerValidation.errors.map((error, index) => (
+                      <div
+                        key={index}
+                        className="flex items-start space-x-2 p-2 bg-white rounded border border-red-200"
+                      >
+                        <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+                        <div className="text-xs text-red-700">
+                          <p className="font-medium">{error.message}</p>
+                          {error.errorType === 'MISSING_COLUMN' && (
+                            <p className="text-red-600 mt-1">
+                              Expected column:{' '}
+                              <span className="font-mono bg-red-100 px-1 rounded">
+                                {error.columnName}
+                              </span>
+                            </p>
+                          )}
+                          {error.errorType === 'EXTRA_COLUMN' && (
+                            <p className="text-red-600 mt-1">
+                              Unexpected column:{' '}
+                              <span className="font-mono bg-red-100 px-1 rounded">
+                                {error.columnName}
+                              </span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="text-xs text-red-600 bg-white p-2 rounded border border-red-200">
+                    <p className="font-medium mb-1">Expected headers:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {headerValidation.expectedHeaders.map((header, index) => (
+                        <span
+                          key={index}
+                          className="font-mono bg-red-100 text-red-800 px-1 rounded text-xs"
+                        >
+                          {header}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-red-600 bg-white p-2 rounded border border-red-200">
+                    <p className="font-medium mb-1">Your CSV headers:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {headerValidation.newHeaders.map((header, index) => (
+                        <span
+                          key={index}
+                          className="font-mono bg-red-100 text-red-800 px-1 rounded text-xs"
+                        >
+                          {header}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="pt-2">
             <Button
               className="w-full"
               size="sm"
               onClick={handleUpload}
-              disabled={isUploading || !selectedDatasetId}
+              disabled={
+                isUploading ||
+                !selectedDatasetId ||
+                headerValidation?.isValid === false
+              }
             >
               {isUploading ? (
                 <>
@@ -392,7 +554,7 @@ export function DataFileUploadComponent({
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Upload Data File
+                  Upload CSV File
                 </>
               )}
             </Button>
@@ -421,7 +583,7 @@ export function DataFileUploadComponent({
         <div className="flex items-center space-x-2 mb-2">
           <FileText className="h-4 w-4 text-blue-600" />
           <span className="text-sm font-medium text-blue-900">
-            Supported Data File Formats
+            Supported CSV Formats
           </span>
         </div>
         <div className="grid grid-cols-2 gap-2 text-xs text-blue-700">
