@@ -1,33 +1,29 @@
 'use client';
 
-import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Database, ChevronDown, ChevronUp } from 'lucide-react';
+import { Database, FileText, Plus } from 'lucide-react';
 
 interface CSVColumn {
   name: string;
-  sampleData: string;
+  sampleData?: string;
+  source?: 'CSV' | 'MANUAL';
+  csvImportId?: string;
 }
 
 interface CSVColumnsDisplayProps {
-  columns: CSVColumn[];
+  csvColumns: CSVColumn[];
+  manualColumns?: CSVColumn[];
   title?: string;
   description?: string;
 }
 
 export function CSVColumnsDisplay({
-  columns,
-  title = 'CSV Columns',
-  description = 'Columns available in the uploaded CSV file',
+  csvColumns,
+  manualColumns = [],
+  title = 'Available Columns',
+  description = 'Columns available for annotation configuration',
 }: CSVColumnsDisplayProps) {
-  const [showAllColumns, setShowAllColumns] = useState(false);
-
-  // Limit columns shown initially
-  const columnsToShow = showAllColumns ? columns : columns.slice(0, 20);
-  const hasMoreColumns = columns.length > 20;
-
   return (
     <Card className="w-full">
       <CardHeader className="pb-3">
@@ -40,58 +36,66 @@ export function CSVColumnsDisplay({
             </div>
           </div>
           <Badge variant="outline" className="text-xs">
-            {columns.length} columns
+            {csvColumns.length + manualColumns.length} columns
           </Badge>
         </div>
       </CardHeader>
 
       <CardContent className="pt-0">
-        {columnsToShow.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <p className="text-sm">No columns available</p>
-          </div>
-        ) : (
-          <>
-            {/* Compact Column Display */}
-            <div className="flex flex-wrap gap-2">
-              {columnsToShow.map((column) => (
-                <div
-                  key={column.name}
-                  className="flex items-center space-x-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-2 hover:bg-gray-100 transition-colors"
-                  title={column.name}
-                >
-                  <span className="text-sm font-medium text-gray-900 truncate max-w-[120px]">
-                    {column.name}
-                  </span>
+        <div className="space-y-4">
+          {/* CSV Columns */}
+          {csvColumns.length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                <FileText className="h-4 w-4 mr-2 text-blue-600" />
+                CSV Columns ({csvColumns.length})
+              </h4>
+              <div className="overflow-x-auto">
+                <div className="grid grid-cols-10 gap-2 min-w-max">
+                  {csvColumns.map((column) => (
+                    <span
+                      key={column.name}
+                      className="px-3 py-1 bg-blue-100 text-blue-800 text-sm border border-blue-200 text-center truncate rounded-sm"
+                      title={column.name}
+                    >
+                      {column.name}
+                    </span>
+                  ))}
                 </div>
-              ))}
-            </div>
-
-            {/* Show More/Less Button */}
-            {hasMoreColumns && (
-              <div className="text-center mt-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowAllColumns(!showAllColumns)}
-                  className="h-8 px-4 text-xs"
-                >
-                  {showAllColumns ? (
-                    <>
-                      <ChevronUp className="h-3 w-3 mr-1" />
-                      Show Less
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="h-3 w-3 mr-1" />
-                      Show All {columns.length} Columns
-                    </>
-                  )}
-                </Button>
               </div>
-            )}
-          </>
-        )}
+            </div>
+          )}
+
+          {/* Manual Columns */}
+          {manualColumns.length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                <Plus className="h-4 w-4 mr-2 text-green-600" />
+                Manual Columns ({manualColumns.length})
+              </h4>
+              <div className="overflow-x-auto">
+                <div className="grid grid-cols-10 gap-2 min-w-max">
+                  {manualColumns.map((column) => (
+                    <span
+                      key={column.name}
+                      className="px-3 py-1 bg-green-100 text-green-800 text-sm border border-green-200 text-center truncate rounded-sm"
+                      title={column.name}
+                    >
+                      {column.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* No Columns State */}
+          {csvColumns.length === 0 && manualColumns.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              <p className="text-sm">No columns available</p>
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

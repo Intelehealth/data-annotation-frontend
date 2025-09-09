@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { fieldSelectionAPI } from '@/lib/api';
+import { datasetsAPI } from '@/lib/api/datasets';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -100,7 +101,10 @@ export function FieldConfig({
 }: FieldConfigProps) {
   const router = useRouter();
   const { showToast } = useToast();
-  const [csvColumns, setCsvColumns] = useState<CSVColumn[]>([]);
+  const [availableColumns, setAvailableColumns] = useState<{
+    csvColumns: { name: string; source: 'CSV'; csvImportId?: string }[];
+    manualColumns: { name: string; source: 'MANUAL' }[];
+  }>({ csvColumns: [], manualColumns: [] });
   const [annotationFields, setAnnotationFields] = useState<AnnotationField[]>(
     [],
   );
@@ -110,92 +114,70 @@ export function FieldConfig({
   const [newColumns, setNewColumns] = useState<NewColumn[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
-  const [csvImportIdState, setCsvImportIdState] = useState<string | undefined>(
-    csvImportId,
+  const [datasetLoadingError, setDatasetLoadingError] = useState<string | null>(
+    null,
   );
-  const [availableCSVImports, setAvailableCSVImports] = useState<any[]>([]);
-  const [csvLoadingError, setCsvLoadingError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
     'fields' | 'labels' | 'newColumns'
   >('fields');
 
-  // Load CSV columns and existing field configuration
+  // Load dataset columns and existing field configuration
   useEffect(() => {
     console.log('FieldConfig useEffect triggered');
     console.log('datasetId:', datasetId);
-    console.log('csvImportId:', csvImportId);
 
-    // Always load existing field configuration first
+    // Load dataset available columns and existing field configuration
+    loadDatasetColumns();
     loadExistingFieldConfig();
+  }, [datasetId]);
 
-    if (csvImportId) {
-      // If csvImportId is provided as prop, use it directly
-      setCsvImportIdState(csvImportId);
-      // Load CSV columns after a short delay to ensure state is updated
-      setTimeout(() => {
-        loadRealCSVColumns();
-      }, 200);
-    } else {
-      // Automatically load the first CSV import for this dataset
-      loadAvailableCSVImports();
-    }
-  }, [datasetId, csvImportId]);
-
-  const loadAvailableCSVImports = async () => {
+  const loadDatasetColumns = async () => {
     try {
       setLoading(true);
-      setCsvLoadingError(null);
-      console.log('Loading CSV imports for dataset:', datasetId);
+      setDatasetLoadingError(null);
+      console.log('Loading dataset columns for dataset:', datasetId);
 
-      const csvImports = await fieldSelectionAPI.getDatasetCSVImports(
-        datasetId,
-      );
+      const dataset = await datasetsAPI.getById(datasetId);
+      console.log('Dataset response:', dataset);
 
-      console.log('Available CSV imports:', csvImports);
-      setAvailableCSVImports(csvImports);
+      if (dataset && (dataset as any).availableColumns) {
+        const availableColumns = (dataset as any).availableColumns;
+        const csvColumns = availableColumns.filter(
+          (col: any) => col.source === 'CSV',
+        );
+        const manualColumns = availableColumns.filter(
+          (col: any) => col.source === 'MANUAL',
+        );
 
-      // Automatically select the first CSV import if available
-      if (csvImports.length > 0) {
-        const firstCsvImport = csvImports[0];
-        console.log('Auto-selecting first CSV import:', firstCsvImport);
-        console.log('First CSV import columns:', firstCsvImport.columns);
+        console.log('CSV columns:', csvColumns);
+        console.log('Manual columns:', manualColumns);
 
-        setCsvImportIdState(firstCsvImport._id);
-
-        // If the CSV import already has columns, use them directly
-        if (
-          firstCsvImport.columns &&
-          Array.isArray(firstCsvImport.columns) &&
-          firstCsvImport.columns.length > 0
-        ) {
-          console.log('Using columns from CSV import response directly');
-          const directColumns: CSVColumn[] = firstCsvImport.columns.map(
-            (columnName: string, index: number) => ({
-              name: columnName,
-              sampleData: `Sample ${index + 1}`,
-              dataType: 'string' as const,
-            }),
-          );
-          setCsvColumns(directColumns);
-        } else {
-          console.log('No columns in CSV import response, trying API call');
-          // Load columns for the first CSV import (field config already loaded)
-          setTimeout(() => {
-            loadRealCSVColumns();
-          }, 100);
-        }
+        setAvailableColumns({
+          csvColumns: csvColumns.map((col: any) => ({
+            name: col.name,
+            source: 'CSV' as const,
+            csvImportId: col.csvImportId,
+          })),
+          manualColumns: manualColumns.map((col: any) => ({
+            name: col.name,
+            source: 'MANUAL' as const,
+          })),
+        });
       } else {
-        console.log('No CSV imports found for dataset');
+        console.log('No available columns found in dataset');
+        setAvailableColumns({ csvColumns: [], manualColumns: [] });
       }
     } catch (error: any) {
-      console.error('Error loading CSV imports:', error);
+      console.error('Error loading dataset columns:', error);
       console.error('Error details:', {
         message: error.message,
         status: error.response?.status,
         data: error.response?.data,
       });
-      setCsvLoadingError('Failed to load CSV imports. Please try again.');
-      setAvailableCSVImports([]);
+      setDatasetLoadingError(
+        'Failed to load dataset columns. Please try again.',
+      );
+      setAvailableColumns({ csvColumns: [], manualColumns: [] });
     } finally {
       setLoading(false);
     }
@@ -205,102 +187,56 @@ export function FieldConfig({
     if (!datasetId) return;
 
     try {
-      setLoading(true);
-      console.log('Loading existing field config for dataset:', datasetId);
       const config = await fieldSelectionAPI.getDatasetFieldConfig(datasetId);
-      console.log('Loaded field config:', config);
       if (config) {
-        setAnnotationFields(config.annotationFields || []);
+        // Clean normalization - create completely new objects
+        const cleanFields = (config.annotationFields || []).map(
+          (field: any, index: number) => {
+            const cleanField = {
+              id: field.id || `field-${index}`,
+              csvColumnName: field.csvColumnName || '',
+              fieldName: field.fieldName || '',
+              fieldType: field.fieldType || 'text',
+              isRequired: Boolean(field.isRequired),
+              isMetadataField: Boolean(field.isMetadataField),
+              isAnnotationField: Boolean(field.isAnnotationField),
+              options: field.options || [],
+              isNewColumn: Boolean(field.isNewColumn),
+              newColumnId: field.newColumnId || undefined,
+            };
+            return cleanField;
+          },
+        );
+
+        // Validate and fix annotation field selection
+        const annotationFieldsCount = cleanFields.filter(
+          (f: AnnotationField) => f.isAnnotationField,
+        ).length;
+
+        if (annotationFieldsCount > 1) {
+          let foundFirst = false;
+          cleanFields.forEach((field: AnnotationField) => {
+            if (field.isAnnotationField) {
+              if (!foundFirst) {
+                foundFirst = true;
+              } else {
+                field.isAnnotationField = false;
+              }
+            }
+          });
+        } else if (annotationFieldsCount === 0 && cleanFields.length > 0) {
+          cleanFields[0].isAnnotationField = true;
+          cleanFields[0].isMetadataField = false;
+        }
+
+        setAnnotationFields(cleanFields);
         setAnnotationLabels(config.annotationLabels || []);
         setNewColumns(config.newColumns || []);
-        console.log('Set annotation fields:', config.annotationFields);
-        console.log('Set annotation labels:', config.annotationLabels);
-        console.log('Set new columns:', config.newColumns);
-      } else {
-        console.log('No existing field config found');
       }
       setHasChanges(false);
-      if (csvImportIdState) {
-        // Load CSV columns after loading field config
-        setTimeout(() => {
-          loadRealCSVColumns();
-        }, 100);
-      }
     } catch (error) {
       console.error('Error loading field config:', error);
-      if (csvImportIdState) {
-        loadMockCSVColumns();
-      }
-    } finally {
-      setLoading(false);
     }
-  };
-
-  const loadRealCSVColumns = async () => {
-    if (!csvImportIdState) return;
-
-    try {
-      console.log('Loading CSV columns for csvImportId:', csvImportIdState);
-      console.log(
-        'Making API call to:',
-        `/csv-processing/columns/${csvImportIdState}`,
-      );
-
-      const csvColumnsData = await fieldSelectionAPI.getCSVColumns(
-        csvImportIdState,
-      );
-
-      console.log('Raw API Response:', csvColumnsData);
-
-      if (
-        csvColumnsData &&
-        csvColumnsData.columns &&
-        Array.isArray(csvColumnsData.columns)
-      ) {
-        const realColumns: CSVColumn[] = csvColumnsData.columns.map(
-          (columnName: string, index: number) => ({
-            name: columnName,
-            sampleData: `Sample ${index + 1}`,
-            dataType: 'string' as const,
-          }),
-        );
-        console.log('Processed columns:', realColumns);
-        setCsvColumns(realColumns);
-      } else {
-        console.log('No columns found in response, using mock data');
-        console.log('Response structure:', {
-          hasColumns: !!csvColumnsData?.columns,
-          columnsType: typeof csvColumnsData?.columns,
-          isArray: Array.isArray(csvColumnsData?.columns),
-          columnsLength: csvColumnsData?.columns?.length,
-        });
-        loadMockCSVColumns();
-      }
-    } catch (error: any) {
-      console.error('Error loading real CSV columns:', error);
-      console.error('Error details:', {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-      });
-      loadMockCSVColumns();
-    }
-  };
-
-  const loadMockCSVColumns = () => {
-    const mockColumns: CSVColumn[] = [
-      { name: 'customer_name', sampleData: 'John Doe', dataType: 'string' },
-      { name: 'email', sampleData: 'john@email.com', dataType: 'string' },
-      { name: 'phone', sampleData: '123-456-7890', dataType: 'string' },
-      {
-        name: 'message',
-        sampleData: 'Great service experience',
-        dataType: 'string',
-      },
-      { name: 'rating', sampleData: '5', dataType: 'number' },
-      { name: 'timestamp', sampleData: '2024-01-15', dataType: 'date' },
-    ];
-    setCsvColumns(mockColumns);
   };
 
   // Annotation Field Management
@@ -312,7 +248,7 @@ export function FieldConfig({
       fieldType: 'text',
       isRequired: false,
       isMetadataField: false,
-      isAnnotationField: true,
+      isAnnotationField: false, // Changed from true to false
       options: [],
     };
     setAnnotationFields([...annotationFields, newField]);
@@ -323,11 +259,53 @@ export function FieldConfig({
     id: string,
     updates: Partial<AnnotationField>,
   ) => {
-    setAnnotationFields((fields) =>
-      fields.map((field) =>
-        field.id === id ? { ...field, ...updates } : field,
-      ),
-    );
+    setAnnotationFields((currentFields) => {
+      const newFields = currentFields.map((field) => {
+        if (field.id === id) {
+          const updatedField = { ...field, ...updates };
+          return updatedField;
+        }
+        return { ...field }; // Create new object to avoid reference issues
+      });
+      return newFields;
+    });
+    setHasChanges(true);
+  };
+
+  // New function specifically for annotation radio button
+  const selectAnnotationField = (selectedId: string) => {
+    setAnnotationFields((currentFields) => {
+      const newFields = currentFields.map((field) => {
+        const newField = { ...field };
+        if (field.id === selectedId) {
+          newField.isAnnotationField = true;
+          newField.isMetadataField = false;
+        } else {
+          newField.isAnnotationField = false;
+        }
+        return newField;
+      });
+      return newFields;
+    });
+    setHasChanges(true);
+  };
+
+  // New function specifically for metadata checkbox
+  const toggleMetadataField = (fieldId: string, isMetadata: boolean) => {
+    setAnnotationFields((currentFields) => {
+      const newFields = currentFields.map((field) => {
+        if (field.id === fieldId) {
+          const newField = { ...field };
+          newField.isMetadataField = isMetadata;
+          if (isMetadata) {
+            newField.isAnnotationField = false; // Mutual exclusivity
+          }
+          return newField;
+        }
+        return { ...field };
+      });
+      return newFields;
+    });
     setHasChanges(true);
   };
 
@@ -430,6 +408,30 @@ export function FieldConfig({
       return;
     }
 
+    // Validate that exactly one annotation field is selected
+    const annotationFieldCount = annotationFields.filter(
+      (field) => field.isAnnotationField,
+    ).length;
+    if (annotationFieldCount === 0) {
+      showToast({
+        title: 'Validation Error',
+        description:
+          'Please select exactly one field as "Annotation" before saving.',
+        type: 'error',
+      });
+      return;
+    }
+
+    if (annotationFieldCount > 1) {
+      showToast({
+        title: 'Validation Error',
+        description:
+          'Only one field can be selected as "Annotation". Please deselect other annotation fields.',
+        type: 'error',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       console.log('Saving field configuration for dataset:', datasetId);
@@ -514,9 +516,17 @@ export function FieldConfig({
 
   return (
     <div className="space-y-6">
-      {/* Action Buttons */}
-      {csvImportIdState && (
-        <div className="flex items-center justify-end space-x-3">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Field Configuration
+          </h1>
+          <p className="text-gray-600 mt-1">
+            Configure CSV annotation fields and data mapping
+          </p>
+        </div>
+        <div className="flex items-center space-x-3">
           <Button
             variant="outline"
             onClick={handleSave}
@@ -527,32 +537,32 @@ export function FieldConfig({
             Save Configuration
           </Button>
         </div>
-      )}
+      </div>
 
       {/* Loading State */}
-      {loading && !csvImportIdState && (
+      {loading && (
         <Card>
           <CardContent className="p-8">
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-500">Loading CSV imports...</p>
+              <p className="text-gray-500">Loading dataset columns...</p>
             </div>
           </CardContent>
         </Card>
       )}
 
       {/* Error State */}
-      {csvLoadingError && !csvImportIdState && (
+      {datasetLoadingError && (
         <Card>
           <CardContent className="p-8">
             <div className="text-center py-8 text-red-500">
               <AlertCircle className="h-16 w-16 mx-auto mb-4 text-red-300" />
               <p className="text-lg font-medium mb-2">
-                Error Loading CSV Imports
+                Error Loading Dataset Columns
               </p>
-              <p className="text-sm mb-4">{csvLoadingError}</p>
+              <p className="text-sm mb-4">{datasetLoadingError}</p>
               <Button
-                onClick={loadAvailableCSVImports}
+                onClick={loadDatasetColumns}
                 className="bg-red-600 hover:bg-red-700"
               >
                 Try Again
@@ -562,16 +572,16 @@ export function FieldConfig({
         </Card>
       )}
 
-      {/* No CSV Imports State */}
+      {/* No Columns State */}
       {!loading &&
-        !csvLoadingError &&
-        availableCSVImports.length === 0 &&
-        !csvImportIdState && (
+        !datasetLoadingError &&
+        availableColumns.csvColumns.length === 0 &&
+        availableColumns.manualColumns.length === 0 && (
           <Card>
             <CardContent className="p-8">
               <div className="text-center py-8 text-gray-500">
                 <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium mb-2">No CSV imports found</p>
+                <p className="text-lg font-medium mb-2">No columns found</p>
                 <p className="text-sm mb-4">
                   Please upload a CSV file first to configure annotation fields
                 </p>
@@ -592,56 +602,18 @@ export function FieldConfig({
           </Card>
         )}
 
-      {/* CSV Import Selector */}
-      {csvImportIdState && availableCSVImports.length > 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <FileText className="h-5 w-5 text-blue-600" />
-              <span>CSV Import</span>
-            </CardTitle>
-            <CardDescription>
-              Select which CSV import to configure fields for
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <Label htmlFor="csv-import-select">Current CSV Import</Label>
-              <select
-                id="csv-import-select"
-                value={csvImportIdState}
-                onChange={(e) => {
-                  setCsvImportIdState(e.target.value);
-                  // Load CSV columns for the selected import
-                  setTimeout(() => {
-                    loadRealCSVColumns();
-                  }, 100);
-                }}
-                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {availableCSVImports.map((csvImport) => (
-                  <option key={csvImport._id} value={csvImport._id}>
-                    {csvImport.originalFileName} ({csvImport.totalRows} rows,{' '}
-                    {csvImport.columns.length} columns)
-                  </option>
-                ))}
-              </select>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* CSV Columns Display */}
-      {csvImportIdState && csvColumns.length > 0 && (
+      {/* Available Columns Display */}
+      {(availableColumns.csvColumns.length > 0 ||
+        availableColumns.manualColumns.length > 0) && (
         <CSVColumnsDisplay
-          columns={csvColumns}
-          title="Available CSV Columns"
-          description="Columns from the uploaded CSV file that can be configured for annotation"
+          csvColumns={availableColumns.csvColumns}
+          manualColumns={availableColumns.manualColumns}
         />
       )}
 
       {/* Configuration Tabs */}
-      {csvImportIdState && (
+      {(availableColumns.csvColumns.length > 0 ||
+        availableColumns.manualColumns.length > 0) && (
         <div className="space-y-6">
           {/* Tab Navigation */}
           <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg w-fit">
@@ -733,6 +705,31 @@ export function FieldConfig({
                       <div className="col-span-2">Actions</div>
                     </div>
 
+                    {/* User Note */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                      <div className="flex items-start space-x-2">
+                        <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                        <div className="text-sm text-blue-800">
+                          <p className="font-medium mb-1">
+                            Annotation Field Selection
+                          </p>
+                          <p>
+                            • Only <strong>one field</strong> can be selected as
+                            "Annotation" (radio button)
+                          </p>
+                          <p>
+                            • Multiple fields can be selected as "Metadata"
+                            (checkboxes) - these fields will be displayed along
+                            with the annotation field
+                          </p>
+                          <p>
+                            • Annotation and Metadata fields are mutually
+                            exclusive
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Field Rows */}
                     {annotationFields.map((field) => (
                       <div
@@ -774,37 +771,54 @@ export function FieldConfig({
                             }}
                             className="w-full h-9 px-3 py-1 border border-gray-300 bg-white rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           >
-                            <option value="">Select CSV Column</option>
-                            {csvColumns.length > 0 ? (
-                              csvColumns.map((column) => (
-                                <option key={column.name} value={column.name}>
-                                  {column.name}
-                                </option>
-                              ))
-                            ) : (
-
-                              <option disabled>No CSV columns available</option>
+                            <option value="">Select Column</option>
+                            {availableColumns.csvColumns.length > 0 && (
+                              <>
+                                {availableColumns.csvColumns.map((column) => (
+                                  <option key={column.name} value={column.name}>
+                                    {column.name}
+                                  </option>
+                                ))}
+                              </>
+                            )}
+                            {availableColumns.manualColumns.length > 0 && (
+                              <>
+                                {availableColumns.manualColumns.map(
+                                  (column) => (
+                                    <option
+                                      key={column.name}
+                                      value={column.name}
+                                    >
+                                      {column.name}
+                                    </option>
+                                  ),
+                                )}
+                              </>
                             )}
                             {newColumns.length > 0 && (
                               <>
-                                <option disabled>--- New Columns ---</option>
                                 {newColumns.map((column) => (
                                   <option
                                     key={`new-${column.id}`}
                                     value={`new-${column.id}`}
                                   >
-                                    {column.columnName} (New Column)
+                                    {column.columnName}
                                   </option>
                                 ))}
                               </>
-
                             )}
+                            {availableColumns.csvColumns.length === 0 &&
+                              availableColumns.manualColumns.length === 0 &&
+                              newColumns.length === 0 && (
+                                <option disabled>No columns available</option>
+                              )}
                           </select>
-                          {csvColumns.length === 0 && (
-                            <p className="text-xs text-red-500 mt-1">
-                              No CSV columns loaded. Check console for errors.
-                            </p>
-                          )}
+                          {availableColumns.csvColumns.length === 0 &&
+                            availableColumns.manualColumns.length === 0 && (
+                              <p className="text-xs text-red-500 mt-1">
+                                No columns available. Upload a CSV file first.
+                              </p>
+                            )}
                         </div>
 
                         <div className="col-span-2">
@@ -861,12 +875,9 @@ export function FieldConfig({
                             <input
                               type="checkbox"
                               checked={field.isMetadataField}
-                              onChange={(e) =>
-                                updateAnnotationField(field.id, {
-                                  isMetadataField: e.target.checked,
-                                  isAnnotationField: !e.target.checked,
-                                })
-                              }
+                              onChange={(e) => {
+                                toggleMetadataField(field.id, e.target.checked);
+                              }}
                               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                             />
                             <span className="text-sm text-gray-700">
@@ -878,15 +889,15 @@ export function FieldConfig({
                         <div className="col-span-2">
                           <label className="flex items-center space-x-2 cursor-pointer">
                             <input
-                              type="checkbox"
+                              type="radio"
+                              name="annotationField"
                               checked={field.isAnnotationField}
-                              onChange={(e) =>
-                                updateAnnotationField(field.id, {
-                                  isAnnotationField: e.target.checked,
-                                  isMetadataField: !e.target.checked,
-                                })
-                              }
-                              className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  selectAnnotationField(field.id);
+                                }
+                              }}
+                              className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300"
                             />
                             <span className="text-sm text-gray-700">
                               Annotation
@@ -1221,7 +1232,8 @@ export function FieldConfig({
       )}
 
       {/* Status and Progress */}
-      {csvImportIdState && (
+      {(availableColumns.csvColumns.length > 0 ||
+        availableColumns.manualColumns.length > 0) && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -1263,9 +1275,10 @@ export function FieldConfig({
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-gray-600">
-                  {csvColumns.length}
+                  {availableColumns.csvColumns.length +
+                    availableColumns.manualColumns.length}
                 </div>
-                <div className="text-sm text-gray-600">Total CSV Columns</div>
+                <div className="text-sm text-gray-600">Available Columns</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-teal-600">

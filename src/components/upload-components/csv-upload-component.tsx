@@ -13,13 +13,13 @@ import {
   Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import api from '@/lib/api';
 import {
   csvProcessingAPI,
   HeaderValidationResult,
 } from '@/lib/api/csv-processing';
 import { useToast } from '@/components/ui/toast';
 import { useRouter } from 'next/navigation';
+import * as ExcelJS from 'exceljs';
 
 interface CSVUploadComponentProps {
   selectedDatasetId: string;
@@ -117,15 +117,10 @@ export function CSVUploadComponent({
     setUploadProgress(0);
 
     try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-
-      const response = await api.post(
-        `/csv-processing/upload/${selectedDatasetId}`,
-        formData,
+      const result = await csvProcessingAPI.uploadCSV(
+        selectedDatasetId,
+        selectedFile,
       );
-
-      const result = response.data;
 
       setUploadStatus('success');
       setUploadProgress(100);
@@ -163,6 +158,88 @@ export function CSVUploadComponent({
   const previewCSV = async () => {
     if (!selectedFile) return;
 
+    // Check if it's an Excel file
+    const isExcelFile =
+      selectedFile.name.endsWith('.xlsx') || selectedFile.name.endsWith('.xls');
+
+    if (isExcelFile) {
+      // For Excel files, use exceljs to parse
+      try {
+        const workbook = new ExcelJS.Workbook();
+        const buffer = await selectedFile.arrayBuffer();
+        await workbook.xlsx.load(buffer);
+
+        const worksheet = workbook.worksheets[0];
+        if (!worksheet) {
+          throw new Error('No worksheet found');
+        }
+
+        // Helper function to convert Excel values to displayable strings
+        const formatExcelValue = (value: any): string => {
+          if (value === null || value === undefined) {
+            return '';
+          }
+          if (value instanceof Date) {
+            return value.toLocaleDateString();
+          }
+          if (typeof value === 'object') {
+            return JSON.stringify(value);
+          }
+          return String(value);
+        };
+
+        // Get the first row as headers
+        const headerRow = worksheet.getRow(1);
+        const columns = headerRow.values as any[];
+        // Remove the first element (ExcelJS includes undefined as first element)
+        const cleanColumns = columns
+          .slice(1)
+          .map((col: any) => formatExcelValue(col));
+
+        // Get sample rows (rows 2-6)
+        const sampleRows: Record<string, any>[] = [];
+        for (let i = 2; i <= Math.min(6, worksheet.rowCount); i++) {
+          const row = worksheet.getRow(i);
+          const values = row.values as any[];
+          const cleanValues = values.slice(1); // Remove first undefined element
+
+          const rowData: Record<string, any> = {};
+          cleanColumns.forEach((col, index) => {
+            rowData[col] = formatExcelValue(cleanValues[index]);
+          });
+          sampleRows.push(rowData);
+        }
+
+        setCSVPreview({
+          columns: cleanColumns,
+          sampleRows,
+          totalRows: worksheet.rowCount - 1, // Subtract header row
+        });
+      } catch (error) {
+        console.error('Error parsing Excel file:', error);
+        showToast({
+          type: 'error',
+          title: 'Excel Parse Error',
+          description:
+            'Failed to parse Excel file. Please check the file format.',
+        });
+
+        // Fallback to error message
+        setCSVPreview({
+          columns: ['Error'],
+          sampleRows: [
+            {
+              Error:
+                'Failed to parse Excel file. Please check the file format.',
+            },
+          ],
+          totalRows: 0,
+        });
+      }
+      return;
+    }
+
+    // For CSV files, use the existing text parsing
     const reader = new FileReader();
     reader.onload = (e) => {
       const csv = e.target?.result as string;
@@ -374,48 +451,69 @@ export function CSVUploadComponent({
             </div>
           </div>
 
-          {/* CSV Preview */}
+          {/* File Preview */}
           {csvPreview && (
             <div className="bg-white rounded-lg border border-gray-200 p-4">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-medium text-gray-900">
-                  CSV Preview
+                  File Preview
                 </h4>
-                <span className="text-xs text-gray-500">
-                  {csvPreview.totalRows} total rows
-                </span>
+                {csvPreview.totalRows > 0 && (
+                  <span className="text-xs text-gray-500">
+                    {csvPreview.totalRows} total rows
+                  </span>
+                )}
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-gray-200">
-                      {csvPreview.columns.map((column, index) => (
-                        <th
-                          key={index}
-                          className="text-left py-2 px-2 font-medium text-gray-700"
-                        >
-                          {column}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {csvPreview.sampleRows.map((row, rowIndex) => (
-                      <tr key={rowIndex} className="border-b border-gray-100">
-                        {csvPreview.columns.map((column, colIndex) => (
-                          <td
-                            key={colIndex}
-                            className="py-1 px-2 text-gray-600"
+              {csvPreview.totalRows === 0 ? (
+                // Error message for failed parsing
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <AlertCircle className="h-4 w-4 text-red-600" />
+                    <span className="text-sm font-medium text-red-900">
+                      Parse Error
+                    </span>
+                  </div>
+                  <p className="text-sm text-red-700">
+                    {csvPreview.sampleRows[0]?.[csvPreview.columns[0]] ||
+                      'Failed to parse file'}
+                  </p>
+                </div>
+              ) : (
+                // File preview table (works for both CSV and Excel)
+                <div className="overflow-x-auto max-h-64">
+                  <table className="min-w-full text-xs">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="border-b border-gray-200">
+                        {csvPreview.columns.map((column, index) => (
+                          <th
+                            key={index}
+                            className="text-left py-2 px-2 font-medium text-gray-700 max-w-32 truncate"
+                            title={column}
                           >
-                            {row[column] || ''}
-                          </td>
+                            {column}
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {csvPreview.sampleRows.map((row, rowIndex) => (
+                        <tr key={rowIndex} className="border-b border-gray-100">
+                          {csvPreview.columns.map((column, colIndex) => (
+                            <td
+                              key={colIndex}
+                              className="py-1 px-2 text-gray-600 max-w-32 truncate"
+                              title={row[column] || ''}
+                            >
+                              {row[column] || ''}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 

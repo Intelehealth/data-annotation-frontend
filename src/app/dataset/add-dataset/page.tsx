@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,7 +10,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Database, FileText, Image, AudioLines } from 'lucide-react';
+import {
+  ArrowLeft,
+  Database,
+  FileText,
+  Image,
+  AudioLines,
+  Info,
+  CheckCircle,
+  XCircle,
+  Loader2,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
 
@@ -25,6 +35,15 @@ export default function AddDatasetPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [nameValidation, setNameValidation] = useState<{
+    isValidating: boolean;
+    isValid: boolean | null;
+    message: string;
+  }>({
+    isValidating: false,
+    isValid: null,
+    message: '',
+  });
 
   const {
     register,
@@ -42,14 +61,92 @@ export default function AddDatasetPage() {
   });
 
   const selectedDatasetType = watch('datasetType');
+  const watchedName = watch('name');
+
+  // Debounced name validation function
+  const validateDatasetName = useCallback(async (name: string) => {
+    if (!name || name.trim().length < 2) {
+      setNameValidation({
+        isValidating: false,
+        isValid: null,
+        message: '',
+      });
+      return;
+    }
+
+    setNameValidation({
+      isValidating: true,
+      isValid: null,
+      message: '',
+    });
+
+    try {
+      // Search for existing datasets with the same name
+      const existingDatasets = await datasetsAPI.search(name.trim());
+      const nameExists = existingDatasets.some(
+        (dataset) => dataset.name.toLowerCase() === name.trim().toLowerCase(),
+      );
+
+      if (nameExists) {
+        setNameValidation({
+          isValidating: false,
+          isValid: false,
+          message: `Dataset name "${name.trim()}" is already taken`,
+        });
+      } else {
+        setNameValidation({
+          isValidating: false,
+          isValid: true,
+          message: 'Dataset name is available',
+        });
+      }
+    } catch (error) {
+      setNameValidation({
+        isValidating: false,
+        isValid: null,
+        message: 'Unable to validate name',
+      });
+    }
+  }, []);
+
+  // Debounce effect for name validation
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (watchedName) {
+        validateDatasetName(watchedName);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [watchedName, validateDatasetName]);
 
   const onSubmit = async (data: CreateDatasetFormData) => {
+    // Check if name validation is still in progress
+    if (nameValidation.isValidating) {
+      showToast({
+        title: 'Please wait',
+        description: 'Name validation is in progress. Please wait a moment.',
+        type: 'warning',
+      });
+      return;
+    }
+
+    // Check if name is invalid
+    if (nameValidation.isValid === false) {
+      showToast({
+        title: 'Invalid Dataset Name',
+        description: nameValidation.message,
+        type: 'error',
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       const newDataset = await datasetsAPI.create({
-        name: data.name,
-        description: data.description || '',
+        name: data.name.trim(),
+        description: data.description?.trim() || '',
         datasetType: data.datasetType,
       });
 
@@ -63,12 +160,40 @@ export default function AddDatasetPage() {
       setTimeout(() => {
         router.push('/dataset');
       }, 1500);
-    } catch (error) {
-      showToast({
-        title: 'Failed to Create Dataset',
-        description: 'Please try again or check your connection.',
-        type: 'error',
-      });
+    } catch (error: any) {
+      console.error('Error creating dataset:', error);
+
+      // Handle specific error cases
+      if (error.response?.status === 409) {
+        showToast({
+          title: 'Dataset Name Already Exists',
+          description:
+            error.response?.data?.message ||
+            'This dataset name is already taken.',
+          type: 'error',
+        });
+      } else if (error.response?.status === 400) {
+        showToast({
+          title: 'Invalid Data',
+          description:
+            error.response?.data?.message ||
+            'Please check your input and try again.',
+          type: 'error',
+        });
+      } else if (error.response?.status === 401) {
+        showToast({
+          title: 'Authentication Required',
+          description: 'Please log in again to continue.',
+          type: 'error',
+        });
+        router.push('/login');
+      } else {
+        showToast({
+          title: 'Failed to Create Dataset',
+          description: 'Please check your connection and try again.',
+          type: 'error',
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -108,18 +233,52 @@ export default function AddDatasetPage() {
               >
                 Dataset Name *
               </Label>
-              <Input
-                id="name"
-                placeholder="Enter dataset name"
-                {...register('name')}
-                className={cn(
-                  'h-10',
-                  errors.name &&
-                    'border-red-500 focus:border-red-500 focus:ring-red-500',
-                )}
-              />
+              <div className="relative">
+                <Input
+                  id="name"
+                  placeholder="Enter dataset name"
+                  {...register('name')}
+                  className={cn(
+                    'h-10 pr-10',
+                    errors.name &&
+                      'border-red-500 focus:border-red-500 focus:ring-red-500',
+                    nameValidation.isValid === true &&
+                      !errors.name &&
+                      'border-green-500 focus:border-green-500 focus:ring-green-500',
+                    nameValidation.isValid === false &&
+                      !errors.name &&
+                      'border-red-500 focus:border-red-500 focus:ring-red-500',
+                  )}
+                />
+                {/* Validation Icon */}
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  {nameValidation.isValidating ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  ) : nameValidation.isValid === true ? (
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                  ) : nameValidation.isValid === false ? (
+                    <XCircle className="h-4 w-4 text-red-500" />
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Error Messages */}
               {errors.name && (
                 <p className="text-sm text-red-600">{errors.name.message}</p>
+              )}
+
+              {/* Validation Messages */}
+              {nameValidation.message && !errors.name && (
+                <p
+                  className={cn(
+                    'text-sm',
+                    nameValidation.isValid === true && 'text-green-600',
+                    nameValidation.isValid === false && 'text-red-600',
+                    nameValidation.isValid === null && 'text-gray-500',
+                  )}
+                >
+                  {nameValidation.message}
+                </p>
               )}
             </div>
 
@@ -186,6 +345,18 @@ export default function AddDatasetPage() {
               )}
             </div>
 
+            {/* Information Note */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-start space-x-2">
+                <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> Dataset type is for organization only.
+                  It doesn't affect annotation functionality - you can upload
+                  any data type.
+                </p>
+              </div>
+            </div>
+
             {/* Action Buttons */}
             <div className="flex justify-end space-x-3 pt-4">
               <Button
@@ -198,7 +369,11 @@ export default function AddDatasetPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={
+                  isSubmitting ||
+                  nameValidation.isValidating ||
+                  nameValidation.isValid === false
+                }
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 {isSubmitting ? (

@@ -159,6 +159,15 @@ export function AnnotationWorkbench({
               'Annotation labels count:',
               annotationConfig.annotationLabels?.length || 0,
             );
+            console.log(
+              'All annotation fields:',
+              annotationConfig.annotationFields.map((f) => ({
+                csvColumnName: f.csvColumnName,
+                fieldName: f.fieldName,
+                isAnnotationField: f.isAnnotationField,
+                isMetadataField: f.isMetadataField,
+              })),
+            );
             setAnnotationConfig(annotationConfig);
           } else {
             throw new Error('No field configuration found');
@@ -244,13 +253,26 @@ export function AnnotationWorkbench({
         console.log('Tasks created:', taskData.length, 'tasks');
         setTasks(taskData);
 
-        // Set the first annotation field as selected by default
+        // Set the annotation field as selected by default
         if (annotationConfig && annotationConfig.annotationFields.length > 0) {
-          const firstAnnotationField = annotationConfig.annotationFields.find(
-            (field: any) => field.isAnnotationField,
+          const annotationField = annotationConfig.annotationFields.find(
+            (field: any) => field.isAnnotationField === true,
           );
-          if (firstAnnotationField) {
-            setSelectedFieldId(firstAnnotationField.csvColumnName);
+          console.log(
+            'Looking for annotation field in config:',
+            annotationConfig.annotationFields,
+          );
+          console.log('Found annotation field:', annotationField);
+          if (annotationField) {
+            console.log(
+              'Setting selected field ID to:',
+              annotationField.csvColumnName,
+            );
+            setSelectedFieldId(annotationField.csvColumnName);
+          } else {
+            console.log(
+              'No annotation field found with isAnnotationField: true',
+            );
           }
         }
       } catch (err) {

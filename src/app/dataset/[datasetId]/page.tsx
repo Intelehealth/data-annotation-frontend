@@ -164,22 +164,11 @@ export default function DatasetDetailPage() {
 
       case 'field-configuration':
         return (
-          <div className="space-y-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                Field Configuration
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Configure CSV annotation fields and data mapping
-              </p>
-            </div>
-
-            <FieldConfig
-              datasetId={datasetId}
-              onNavigateToUpload={() => setActiveTab('upload')}
-              onNavigateToOverview={() => setActiveTab('overview')}
-            />
-          </div>
+          <FieldConfig
+            datasetId={datasetId}
+            onNavigateToUpload={() => setActiveTab('upload')}
+            onNavigateToOverview={() => setActiveTab('overview')}
+          />
         );
 
       default:
