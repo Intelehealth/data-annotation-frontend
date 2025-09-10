@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { fieldSelectionAPI } from '@/lib/api';
+import { fieldSelectionAPI } from '@/lib/api/field-config';
 import { datasetsAPI } from '@/lib/api/datasets';
 import { Button } from '@/components/ui/button';
 import {
@@ -476,6 +476,13 @@ export function FieldConfig({
         type: 'success',
       });
       console.log('Field configuration saved successfully');
+
+      // Dispatch event to notify other components that field config was saved
+      window.dispatchEvent(
+        new CustomEvent('fieldConfigSaved', {
+          detail: { datasetId },
+        }),
+      );
 
       // Redirect to data overview tab after successful save
       if (onNavigateToOverview) {

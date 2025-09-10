@@ -131,6 +131,12 @@ export const csvProcessingAPI = {
     return response.data;
   },
 
+  // Get CSV data (including row data)
+  getCSVData: async (csvImportId: string) => {
+    const response = await api.get(`/csv-processing/data/${csvImportId}`);
+    return response.data;
+  },
+
   // Validate CSV headers before upload
   validateHeaders: async (
     datasetId: string,

@@ -183,7 +183,28 @@ export function CSVUploadComponent({
             return value.toLocaleDateString();
           }
           if (typeof value === 'object') {
-            return JSON.stringify(value);
+            // Handle arrays by joining with newlines
+            if (Array.isArray(value)) {
+              return value
+                .map(item => String(item))
+                .filter(item => item.trim() !== '')
+                .join('\n');
+            }
+            // Handle objects with proper stringification
+            try {
+              const stringified = JSON.stringify(value);
+              // If it's a simple object with URL-like properties, extract them
+              if (stringified.includes('url') || stringified.includes('href') || stringified.includes('src')) {
+                const parsed = JSON.parse(stringified);
+                if (parsed.url) return parsed.url;
+                if (parsed.href) return parsed.href;
+                if (parsed.src) return parsed.src;
+                if (parsed.value) return parsed.value;
+              }
+              return stringified;
+            } catch (e) {
+              return String(value);
+            }
           }
           return String(value);
         };

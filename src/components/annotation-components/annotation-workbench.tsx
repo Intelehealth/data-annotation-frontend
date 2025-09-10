@@ -24,16 +24,18 @@ import {
   Image as ImageIcon,
   AudioLines,
   Loader2,
+  Tag,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 import { AnnotationsAPI, Annotation } from '@/lib/api/annotations';
 import {
-  CSVImportsAPI,
   CSVImport,
   AnnotationConfig,
   AnnotationField,
 } from '@/lib/api/csv-imports';
-import { fieldSelectionAPI } from '@/lib/api';
+import { fieldSelectionAPI } from '@/lib/api/field-config';
+import { csvProcessingAPI } from '@/lib/api/csv-processing';
 
 // Import annotation components
 import { TextAnnotationTool } from '@/components/annotation-components/text-annotation-tool';
@@ -63,6 +65,7 @@ export function AnnotationWorkbench({
   csvImportId,
   datasetId,
 }: AnnotationWorkbenchProps) {
+  const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -72,6 +75,8 @@ export function AnnotationWorkbench({
   const [history, setHistory] = useState<any[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+  const [lastSavedTime, setLastSavedTime] = useState<Date | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [annotationConfig, setAnnotationConfig] =
@@ -116,9 +121,9 @@ export function AnnotationWorkbench({
 
         console.log('Loading data for csvImportId:', csvImportId);
 
-        // Load CSV import data
+        // Load CSV import data using csv-processing API
         console.log('Loading CSV import data...');
-        const csvData = await CSVImportsAPI.findOne(csvImportId);
+        const csvData = await csvProcessingAPI.getCSVData(csvImportId);
         console.log('CSV import data loaded:', csvData);
         setCsvImport(csvData);
 
@@ -140,7 +145,7 @@ export function AnnotationWorkbench({
             const annotationConfig: AnnotationConfig = {
               _id: config._id || '',
               csvImportId: csvImportId,
-              userId: config.userId || '',
+              userId: user?._id || '',
               annotationFields: config.annotationFields || [],
               annotationLabels: config.annotationLabels || [],
               rowAnnotations: [],
@@ -185,7 +190,7 @@ export function AnnotationWorkbench({
           const defaultConfig: AnnotationConfig = {
             _id: '',
             csvImportId,
-            userId: '',
+            userId: user?._id || '',
             annotationFields: [],
             rowAnnotations: [],
             totalRows: csvData.totalRows,
@@ -207,7 +212,7 @@ export function AnnotationWorkbench({
         let taskData: Task[] = [];
 
         if (csvData.rowData && Array.isArray(csvData.rowData)) {
-          taskData = csvData.rowData.map((row) => ({
+          taskData = csvData.rowData.map((row: any) => ({
             id: `row-${row.rowIndex}`,
             rowIndex: row.rowIndex,
             fileName: `Row ${row.rowIndex}`,
@@ -429,14 +434,42 @@ export function AnnotationWorkbench({
           headers
             .map((header) => {
               const value = row[header];
-              // Escape commas and quotes in CSV
-              if (
-                typeof value === 'string' &&
-                (value.includes(',') || value.includes('"'))
-              ) {
-                return `"${value.replace(/"/g, '""')}"`;
+              // Handle structured data with newlines
+              let stringValue = '';
+              if (value === null || value === undefined) {
+                stringValue = '';
+              } else if (typeof value === 'object') {
+                if (Array.isArray(value)) {
+                  stringValue = value.join('\n');
+                } else {
+                  // Try to extract meaningful data from objects
+                  const urlKeys = ['url', 'href', 'src', 'link', 'value'];
+                  let found = false;
+                  for (const key of urlKeys) {
+                    if (value[key] && typeof value[key] === 'string') {
+                      stringValue = value[key];
+                      found = true;
+                      break;
+                    }
+                  }
+                  if (!found) {
+                    stringValue = JSON.stringify(value, null, 2);
+                  }
+                }
+              } else {
+                stringValue = String(value);
               }
-              return value || '';
+
+              // Escape commas, quotes, and newlines in CSV
+              if (
+                typeof stringValue === 'string' &&
+                (stringValue.includes(',') ||
+                  stringValue.includes('"') ||
+                  stringValue.includes('\n'))
+              ) {
+                return `"${stringValue.replace(/"/g, '""')}"`;
+              }
+              return stringValue || '';
             })
             .join(','),
         ),
@@ -468,6 +501,7 @@ export function AnnotationWorkbench({
   const saveProgress = useCallback(async () => {
     if (!currentTask || !csvImportId) return;
 
+    setIsSaving(true);
     try {
       // Save metadata changes
       // This would need to be implemented based on your metadata storage strategy
@@ -523,16 +557,21 @@ export function AnnotationWorkbench({
       setTasks((prev) =>
         prev.map((task) => (task.id === currentTask.id ? updatedTask : task)),
       );
+
+      // Update last saved time
+      setLastSavedTime(new Date());
     } catch (err) {
       console.error('Error saving progress:', err);
+    } finally {
+      setIsSaving(false);
     }
   }, [currentTask, metadata, annotations, csvImportId]);
 
-  // Auto-save every 3 seconds
+  // Auto-save every 30 seconds
   useEffect(() => {
     if (!autoSaveEnabled) return;
 
-    const interval = setInterval(saveProgress, 3000);
+    const interval = setInterval(saveProgress, 30000);
     return () => clearInterval(interval);
   }, [saveProgress, autoSaveEnabled]);
 
@@ -685,7 +724,65 @@ export function AnnotationWorkbench({
           (field) => field.fieldType === 'image',
         );
         if (imageField && currentTask.metadata) {
-          return currentTask.metadata[imageField.csvColumnName] || '';
+          const imageData =
+            currentTask.metadata[imageField.csvColumnName] || '';
+
+          // Also check for related fields that might contain additional image URLs
+          const relatedFields = [
+            'text',
+            'hyperlink',
+            'url',
+            'image_url',
+            'imageUrl',
+          ];
+          let allImageUrls: string[] = [];
+
+          // Get URLs from the main image field
+          if (typeof imageData === 'string' && imageData.trim()) {
+            const urls = imageData
+              .split(/[,\n]/) // Handle both comma and newline separators
+              .map((url) => url.trim())
+              .filter((url) => url && url.startsWith('http'));
+            allImageUrls.push(...urls);
+          }
+
+          // Get URLs from related fields
+          relatedFields.forEach((fieldName) => {
+            if (
+              fieldName !== imageField.csvColumnName &&
+              currentTask.metadata &&
+              currentTask.metadata[fieldName]
+            ) {
+              const fieldData = currentTask.metadata[fieldName];
+              if (typeof fieldData === 'string' && fieldData.trim()) {
+                const urls = fieldData
+                  .split(/[,\n]/) // Handle both comma and newline separators
+                  .map((url) => url.trim())
+                  .filter((url) => url && url.startsWith('http'));
+                allImageUrls.push(...urls);
+              }
+            }
+          });
+
+          // Remove duplicates and filter out invalid URLs
+          const uniqueUrls = [...new Set(allImageUrls)].filter(
+            (url) =>
+              url &&
+              url !== '[object Object]' &&
+              (url.startsWith('http') || url.startsWith('https')),
+          );
+
+          console.log('Combined image URLs:', uniqueUrls);
+          console.log('Image field:', imageField.csvColumnName);
+          console.log(
+            'All metadata fields:',
+            Object.keys(currentTask.metadata || {}),
+          );
+          console.log('Text field data:', currentTask.metadata?.text);
+          console.log('Hyperlink field data:', currentTask.metadata?.hyperlink);
+          console.log('Raw URLs before cleaning:', allImageUrls);
+          console.log('URLs after cleaning:', uniqueUrls);
+          return uniqueUrls.join('\n');
         }
       }
       return '';
@@ -723,6 +820,13 @@ export function AnnotationWorkbench({
       (field) => field.csvColumnName === selectedFieldId,
     );
 
+    // Auto-select the single annotation field
+    if (!selectedField && annotationFields.length > 0) {
+      const firstField = annotationFields[0];
+      setSelectedFieldId(firstField.csvColumnName);
+      return null; // Will re-render with selected field
+    }
+
     if (!selectedField) {
       return (
         <div className="p-6">
@@ -731,11 +835,10 @@ export function AnnotationWorkbench({
               <span className="text-4xl text-gray-400">📝</span>
             </div>
             <h3 className="text-xl font-medium mb-2">
-              Select an Annotation Field
+              No Annotation Fields Available
             </h3>
             <p className="text-sm">
-              Click on one of the annotation field buttons above to start
-              annotating.
+              Please configure annotation fields in the field configuration.
             </p>
           </div>
         </div>
@@ -748,16 +851,12 @@ export function AnnotationWorkbench({
     );
 
     return (
-      <div className="p-4 h-full">
+      <div className="h-full">
         <div
           key={selectedField.csvColumnName}
           id={`annotation-field-${selectedField.csvColumnName}`}
           className="h-full"
         >
-          <h3 className="text-base font-medium mb-2 pb-2 border-b border-gray-200">
-            {selectedField.fieldName}
-          </h3>
-
           {/* Text Annotation Tool */}
           {selectedField.fieldType === 'text' && (
             <TextAnnotationTool
@@ -779,7 +878,7 @@ export function AnnotationWorkbench({
                 const updatedAnnotations = newAnnotations.map((ann) => ({
                   _id: ann.id,
                   csvImportId,
-                  userId: '',
+                  userId: user?._id || '',
                   csvRowIndex: currentTask.rowIndex,
                   fieldName: selectedField.fieldName,
                   type: 'TEXT_NER' as any,
@@ -820,11 +919,12 @@ export function AnnotationWorkbench({
               labels={labels}
               annotationLabels={annotationConfig?.annotationLabels || []}
               selectedLabel={selectedLabel}
+              columnName={selectedField.csvColumnName}
               onAnnotationChange={(newAnnotations) => {
                 const updatedAnnotations = newAnnotations.map((ann) => ({
                   _id: ann.id,
                   csvImportId,
-                  userId: '',
+                  userId: user?._id || '',
                   csvRowIndex: currentTask.rowIndex,
                   fieldName: selectedField.fieldName,
                   type: 'BBOX' as any,
@@ -873,7 +973,7 @@ export function AnnotationWorkbench({
                 const updatedAnnotations = newAnnotations.map((ann) => ({
                   _id: ann.id,
                   csvImportId,
-                  userId: '',
+                  userId: user?._id || '',
                   csvRowIndex: currentTask.rowIndex,
                   fieldName: selectedField.fieldName,
                   type: 'AUDIO_TRANSCRIPTION' as any,
@@ -1172,9 +1272,40 @@ export function AnnotationWorkbench({
                       )}
                     </Label>
 
-                    {/* Display metadata fields as static text */}
-                    <div className="mt-1 p-2 border border-gray-200 rounded-md bg-gray-50 text-gray-800 text-sm">
-                      {metadata[field.csvColumnName] || 'N/A'}
+                    {/* Display metadata fields as structured text with preserved formatting */}
+                    <div className="mt-1 p-2 border border-gray-200 rounded-md bg-gray-50 text-gray-800 text-sm whitespace-pre-wrap">
+                      {(() => {
+                        const value = metadata[field.csvColumnName];
+                        if (!value) return 'N/A';
+
+                        // If it's a string with newlines, preserve them
+                        if (typeof value === 'string' && value.includes('\n')) {
+                          return value;
+                        }
+
+                        // If it's an object, try to format it nicely
+                        if (typeof value === 'object' && value !== null) {
+                          if (Array.isArray(value)) {
+                            return value.join('\n');
+                          }
+                          // Try to extract URL-like properties
+                          const urlKeys = [
+                            'url',
+                            'href',
+                            'src',
+                            'link',
+                            'value',
+                          ];
+                          for (const key of urlKeys) {
+                            if (value[key] && typeof value[key] === 'string') {
+                              return value[key];
+                            }
+                          }
+                          return JSON.stringify(value, null, 2);
+                        }
+
+                        return String(value);
+                      })()}
                     </div>
                   </div>
                 ))}
@@ -1216,7 +1347,20 @@ export function AnnotationWorkbench({
 
                 <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
                   <span>Auto-save: {autoSaveEnabled ? 'On' : 'Off'}</span>
-                  <span>Last saved: Just now</span>
+                  <div className="flex items-center space-x-2">
+                    {isSaving ? (
+                      <div className="flex items-center space-x-1 text-blue-600">
+                        <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                        <span>Saving...</span>
+                      </div>
+                    ) : lastSavedTime ? (
+                      <span className="text-green-600">
+                        Last saved: {lastSavedTime.toLocaleTimeString()}
+                      </span>
+                    ) : (
+                      <span>Not saved yet</span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Export CSV Button - Separate Section */}
@@ -1243,7 +1387,7 @@ export function AnnotationWorkbench({
                     Annotating: Row {currentTask.rowIndex}
                   </h2>
 
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-3">
                     <span
                       className={cn(
                         'px-2 py-1 text-xs rounded-full',
@@ -1259,162 +1403,103 @@ export function AnnotationWorkbench({
                     >
                       {currentTask.status.replace('_', ' ')}
                     </span>
+
+                    {/* Labels Menu - Moved beside status */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowLabelsModal(!showLabelsModal)}
+                        className="flex items-center space-x-2 px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-md transition-colors text-sm font-medium"
+                        title="Select annotation label"
+                      >
+                        <Tag className="h-4 w-4" />
+                        <span>Label</span>
+                        <span className="text-blue-600">⋮</span>
+                      </button>
+
+                      {/* Labels Modal */}
+                      {showLabelsModal && (
+                        <div
+                          ref={labelsModalRef}
+                          className="absolute right-0 top-full mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50"
+                        >
+                          <div className="p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <h3 className="text-sm font-medium text-gray-900">
+                                Available Labels
+                              </h3>
+                              <button
+                                onClick={() => setShowLabelsModal(false)}
+                                className="text-gray-400 hover:text-gray-600 transition-colors"
+                              >
+                                <span className="text-lg">×</span>
+                              </button>
+                            </div>
+
+                            <div className="space-y-2">
+                              {annotationConfig?.annotationLabels?.map(
+                                (label, index) => (
+                                  <div
+                                    key={index}
+                                    className="flex items-center justify-between p-2 border border-gray-200 rounded-md hover:bg-gray-50 cursor-pointer"
+                                    onClick={() => {
+                                      setSelectedLabel(label.name);
+                                      setShowLabelsModal(false);
+                                    }}
+                                  >
+                                    <div className="flex items-center space-x-3">
+                                      <div
+                                        className="w-4 h-4 rounded-full border border-gray-300"
+                                        style={{
+                                          backgroundColor: label.color,
+                                        }}
+                                      ></div>
+                                      <div>
+                                        <p className="text-sm font-medium text-gray-900">
+                                          {label.name}
+                                        </p>
+                                        {label.description && (
+                                          <p className="text-xs text-gray-500">
+                                            {label.description}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {label.hotkey && (
+                                      <div className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                                        {label.hotkey}
+                                      </div>
+                                    )}
+                                  </div>
+                                ),
+                              ) || []}
+                            </div>
+
+                            {(!annotationConfig?.annotationLabels ||
+                              annotationConfig.annotationLabels.length ===
+                                0) && (
+                              <div className="text-center py-4 text-gray-500 text-sm">
+                                No labels available. Please configure labels in
+                                the field configuration.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Annotation Field Navigation */}
-                {getAnnotationFields().length > 0 && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-wrap gap-2">
-                      {getAnnotationFields().map((field) => {
-                        const getFieldIcon = () => {
-                          switch (field.fieldType) {
-                            case 'text':
-                              return <FileText className="h-4 w-4" />;
-                            case 'image':
-                              return <ImageIcon className="h-4 w-4" />;
-                            case 'audio':
-                              return <AudioLines className="h-4 w-4" />;
-                            default:
-                              return <FileText className="h-4 w-4" />;
-                          }
-                        };
-
-                        const getFieldTypeColor = () => {
-                          switch (field.fieldType) {
-                            case 'text':
-                              return 'bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200';
-                            case 'image':
-                              return 'bg-green-100 text-green-800 border-green-200 hover:bg-green-200';
-                            case 'audio':
-                              return 'bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-200';
-                            default:
-                              return 'bg-gray-100 text-gray-800 border-gray-200 hover:bg-gray-200';
-                          }
-                        };
-
-                        const isSelected =
-                          selectedFieldId === field.csvColumnName;
-
-                        return (
-                          <div
-                            key={field.csvColumnName}
-                            className="relative group"
-                          >
-                            <button
-                              className={cn(
-                                'flex items-center space-x-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors cursor-pointer w-full',
-                                isSelected
-                                  ? 'bg-blue-500 text-white border-blue-600 shadow-md'
-                                  : getFieldTypeColor(),
-                              )}
-                              onClick={() => {
-                                setSelectedFieldId(field.csvColumnName);
-                              }}
-                            >
-                              {getFieldIcon()}
-                              <span>{field.fieldName}</span>
-                              <span className="text-xs opacity-75">
-                                ({field.fieldType})
-                              </span>
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Selected Label Display and Three Dots */}
-                    <div className="flex items-center space-x-3 relative">
-                      {selectedLabel && (
-                        <div className="flex items-center space-x-2 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                          <span>Selected: {selectedLabel}</span>
-                          <button
-                            onClick={() => setSelectedLabel(null)}
-                            className="text-blue-600 hover:text-blue-800 transition-colors"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      )}
-
-                      <div className="relative">
-                        <button
-                          onClick={() => setShowLabelsModal(!showLabelsModal)}
-                          className="text-gray-400 text-2xl leading-none cursor-pointer hover:text-gray-600 transition-colors"
-                        >
-                          ⋮
-                        </button>
-
-                        {/* Labels Modal */}
-                        {showLabelsModal && (
-                          <div
-                            ref={labelsModalRef}
-                            className="absolute right-0 top-full mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50"
-                          >
-                            <div className="p-4">
-                              <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-sm font-medium text-gray-900">
-                                  Available Labels
-                                </h3>
-                                <button
-                                  onClick={() => setShowLabelsModal(false)}
-                                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                                >
-                                  <span className="text-lg">×</span>
-                                </button>
-                              </div>
-
-                              <div className="space-y-2">
-                                {annotationConfig?.annotationLabels?.map(
-                                  (label, index) => (
-                                    <div
-                                      key={index}
-                                      className="flex items-center justify-between p-2 border border-gray-200 rounded-md hover:bg-gray-50 cursor-pointer"
-                                      onClick={() => {
-                                        setSelectedLabel(label.name);
-                                        setShowLabelsModal(false);
-                                      }}
-                                    >
-                                      <div className="flex items-center space-x-3">
-                                        <div
-                                          className="w-4 h-4 rounded-full border border-gray-300"
-                                          style={{
-                                            backgroundColor: label.color,
-                                          }}
-                                        ></div>
-                                        <div>
-                                          <p className="text-sm font-medium text-gray-900">
-                                            {label.name}
-                                          </p>
-                                          {label.description && (
-                                            <p className="text-xs text-gray-500">
-                                              {label.description}
-                                            </p>
-                                          )}
-                                        </div>
-                                      </div>
-                                      {label.hotkey && (
-                                        <div className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
-                                          {label.hotkey}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ),
-                                ) || []}
-                              </div>
-
-                              {(!annotationConfig?.annotationLabels ||
-                                annotationConfig.annotationLabels.length ===
-                                  0) && (
-                                <div className="text-center py-4 text-gray-500 text-sm">
-                                  No labels available. Please configure labels
-                                  in the field configuration.
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                {/* Selected Label Display */}
+                {selectedLabel && (
+                  <div className="flex items-center justify-end mb-2">
+                    <div className="flex items-center space-x-2 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                      <span>Selected: {selectedLabel}</span>
+                      <button
+                        onClick={() => setSelectedLabel(null)}
+                        className="text-blue-600 hover:text-blue-800 transition-colors"
+                      >
+                        ×
+                      </button>
                     </div>
                   </div>
                 )}

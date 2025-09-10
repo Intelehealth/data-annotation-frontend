@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CSVImport, CSVImportsAPI } from '@/lib/api/csv-imports';
-import { fieldSelectionAPI } from '@/lib/api';
+import { fieldSelectionAPI } from '@/lib/api/field-config';
 import { useToast } from '@/components/ui/toast';
 import { DeleteConfirmationDialog } from './delete-confirmation-dialog';
 
@@ -83,6 +83,36 @@ export function DataOverview({
       setCheckingConfig(false);
     }
   };
+
+  // Method to refresh field configuration status (can be called from parent)
+  const refreshFieldConfiguration = () => {
+    checkFieldConfiguration();
+  };
+
+  // Listen for field configuration saved events
+  useEffect(() => {
+    const handleFieldConfigSaved = (event: CustomEvent) => {
+      // Only refresh if the event is for this dataset
+      if (event.detail?.datasetId === datasetId) {
+        console.log(
+          'Field config saved event received for dataset:',
+          datasetId,
+        );
+        refreshFieldConfiguration();
+      }
+    };
+
+    window.addEventListener(
+      'fieldConfigSaved',
+      handleFieldConfigSaved as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'fieldConfigSaved',
+        handleFieldConfigSaved as EventListener,
+      );
+    };
+  }, [datasetId]);
 
   const handleStartAnnotation = async (csvImport: CSVImport) => {
     if (hasFieldConfig) {

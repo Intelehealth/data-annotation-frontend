@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -34,6 +34,7 @@ interface ImageAnnotationToolProps {
   selectedLabel?: string | null;
   onAnnotationChange: (annotations: BoundingBox[]) => void;
   disabled?: boolean;
+  columnName?: string;
 }
 
 export function ImageAnnotationTool({
@@ -44,6 +45,7 @@ export function ImageAnnotationTool({
   selectedLabel: externalSelectedLabel,
   onAnnotationChange,
   disabled = false,
+  columnName,
 }: ImageAnnotationToolProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -60,25 +62,41 @@ export function ImageAnnotationTool({
   const selectedLabel = externalSelectedLabel || internalSelectedLabel;
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
-  const [selectedImageUrl, setSelectedImageUrl] = useState(() => {
-    // If imageUrl contains multiple URLs, use the first one
-    const urls = imageUrl
-      .split(',')
+  const [lastLoadedUrl, setLastLoadedUrl] = useState<string>('');
+  // Memoize URL parsing to prevent unnecessary recalculations
+  const parsedUrls = useMemo(() => {
+    return imageUrl
+      .split(/[,\n]/) // Handle both comma and newline separators
       .map((url) => url.trim())
-      .filter((url) => url);
-    console.log('Available image URLs:', urls);
+      .filter((url) => url && url.startsWith('http'));
+  }, [imageUrl]);
+
+  const [selectedImageUrl, setSelectedImageUrl] = useState(() => {
+    console.log('Available image URLs:', parsedUrls);
     console.log('Original imageUrl:', imageUrl);
-    return urls.length > 0 ? urls[0] : imageUrl;
+    console.log('First URL to load:', parsedUrls[0]);
+    return parsedUrls.length > 0 ? parsedUrls[0] : '';
   });
 
   useEffect(() => {
     if (!selectedImageUrl) {
       console.log('No selected image URL');
+      setImageLoaded(false);
+      return;
+    }
+
+    // Prevent reloading the same image
+    if (lastLoadedUrl === selectedImageUrl && imageLoaded) {
+      console.log('Image already loaded, skipping reload:', selectedImageUrl);
       return;
     }
 
     console.log('Loading image:', selectedImageUrl);
+    console.log('Image URL type:', typeof selectedImageUrl);
+    console.log('Image URL length:', selectedImageUrl.length);
+
     const img = new Image();
+    img.crossOrigin = 'anonymous'; // Allow cross-origin images
 
     img.onload = () => {
       console.log(
@@ -91,16 +109,28 @@ export function ImageAnnotationTool({
       );
       setImageSize({ width: img.width, height: img.height });
       setImageLoaded(true);
+      setLastLoadedUrl(selectedImageUrl); // Track the loaded URL
       drawCanvas();
     };
 
     img.onerror = (error) => {
       console.error('Failed to load image:', selectedImageUrl, error);
+      console.error('Error details:', {
+        url: selectedImageUrl,
+        error: error,
+        type: typeof selectedImageUrl,
+        length: selectedImageUrl.length,
+      });
       setImageLoaded(false);
     };
 
-    img.src = selectedImageUrl;
-  }, [selectedImageUrl]);
+    try {
+      img.src = selectedImageUrl;
+    } catch (error) {
+      console.error('Error setting image src:', error);
+      setImageLoaded(false);
+    }
+  }, [selectedImageUrl, lastLoadedUrl, imageLoaded]);
 
   useEffect(() => {
     if (imageLoaded) {
@@ -246,26 +276,32 @@ export function ImageAnnotationTool({
   };
 
   return (
-    <div className="space-y-4">
+    <div>
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Square className="h-5 w-5" />
-            <span>Image Annotation</span>
-          </CardTitle>
-        </CardHeader>
         <CardContent>
           <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
             {/* All Available Images - Simple Display */}
             <div className="mb-4">
               <Label className="text-sm font-medium mb-2">
-                All Available Images (
-                {imageUrl.split(',').filter((url) => url.trim()).length})
+                All Available Images{columnName ? ` - ${columnName}` : ''} (
+                {(() => {
+                  return parsedUrls.length;
+                })()}
+                )
               </Label>
               <div className="flex gap-2 overflow-x-auto pb-2">
-                {imageUrl.split(',').map((url, index) => {
+                {(() => {
+                  // Use memoized URLs to prevent unnecessary recalculations
+                  console.log('Display URLs:', parsedUrls);
+                  return parsedUrls;
+                })().map((url, index) => {
                   const trimmedUrl = url.trim();
-                  if (!trimmedUrl) return null;
+                  if (
+                    !trimmedUrl ||
+                    trimmedUrl === '[object Object]' ||
+                    !trimmedUrl.startsWith('http')
+                  )
+                    return null;
 
                   return (
                     <div

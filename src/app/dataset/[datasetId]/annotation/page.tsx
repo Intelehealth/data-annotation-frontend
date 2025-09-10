@@ -47,7 +47,7 @@ export default function AnnotationPage() {
   }
 
   return (
-    <div className="h-full">
+    <div className="h-screen">
       <AnnotationWorkbench csvImportId={csvImportId} datasetId={datasetId} />
     </div>
   );
