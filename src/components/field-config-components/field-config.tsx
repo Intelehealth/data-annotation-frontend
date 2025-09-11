@@ -636,33 +636,25 @@ export function FieldConfig({
                              </div>
 
                            <div className="col-span-4">
-                             <select
-                               value={field.isNewColumn ? newColumn?.columnType || 'text' : field.fieldType}
-                               onChange={(e) => {
-                                 if (field.isNewColumn) {
-                                   updateNewColumn(field.newColumnId!, {
-                                     columnType: e.target.value as any,
-                                   });
-                                 } else {
+                             {field.isNewColumn ? (
+                               <div className="flex items-center h-8 px-2 py-1 bg-gray-50 border border-gray-200 rounded text-sm text-gray-700">
+                                 Text
+                               </div>
+                             ) : (
+                               <select
+                                 value={field.fieldType}
+                                 onChange={(e) =>
                                    updateAnnotationField(field.id, {
                                      fieldType: e.target.value as any,
-                                   });
+                                   })
                                  }
-                               }}
-                               className="w-full h-8 px-2 py-1 border border-gray-300 bg-white rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                             >
-                               <option value="text">Text</option>
-                               <option value="image">Image</option>
-                               <option value="audio">Audio</option>
-                               {field.isNewColumn && (
-                                 <>
-                                   <option value="number">Number</option>
-                                   <option value="select">Select</option>
-                                   <option value="textarea">Textarea</option>
-                                   <option value="rating">Rating</option>
-                                 </>
-                               )}
-                             </select>
+                                 className="w-full h-8 px-2 py-1 border border-gray-300 bg-white rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                               >
+                                 <option value="text">Text</option>
+                                 <option value="image">Image</option>
+                                 <option value="audio">Audio</option>
+                               </select>
+                             )}
                            </div>
 
                            <div className="col-span-2 flex items-center justify-center">
