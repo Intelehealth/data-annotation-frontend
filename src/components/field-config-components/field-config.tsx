@@ -21,7 +21,6 @@ import {
   FileText,
   CheckCircle,
   AlertCircle,
-  Tag,
   Database,
   ArrowLeft,
 } from 'lucide-react';
@@ -59,13 +58,6 @@ interface AnnotationField {
   newColumnId?: string; // Reference to NewColumn if isNewColumn is true
 }
 
-interface AnnotationLabel {
-  id: string;
-  name: string;
-  color: string;
-  description?: string;
-  hotkey?: string;
-}
 
 interface CSVColumn {
   name: string;
@@ -80,18 +72,6 @@ interface FieldConfigProps {
   onNavigateToOverview?: () => void;
 }
 
-const predefinedColors = [
-  '#ef4444',
-  '#f97316',
-  '#eab308',
-  '#22c55e',
-  '#06b6d4',
-  '#3b82f6',
-  '#8b5cf6',
-  '#ec4899',
-  '#64748b',
-  '#0f172a',
-];
 
 export function FieldConfig({
   datasetId,
@@ -108,18 +88,14 @@ export function FieldConfig({
   const [annotationFields, setAnnotationFields] = useState<AnnotationField[]>(
     [],
   );
-  const [annotationLabels, setAnnotationLabels] = useState<AnnotationLabel[]>(
-    [],
-  );
   const [newColumns, setNewColumns] = useState<NewColumn[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [datasetLoadingError, setDatasetLoadingError] = useState<string | null>(
     null,
   );
-  const [activeTab, setActiveTab] = useState<
-    'fields' | 'labels' | 'newColumns'
-  >('fields');
+  const [activeTab, setActiveTab] = useState<'fields'>('fields');
+  const [selectedColumns, setSelectedColumns] = useState<Set<string>>(new Set());
 
   // Load dataset columns and existing field configuration
   useEffect(() => {
@@ -213,25 +189,20 @@ export function FieldConfig({
           (f: AnnotationField) => f.isAnnotationField,
         ).length;
 
-        if (annotationFieldsCount > 1) {
-          let foundFirst = false;
-          cleanFields.forEach((field: AnnotationField) => {
-            if (field.isAnnotationField) {
-              if (!foundFirst) {
-                foundFirst = true;
-              } else {
-                field.isAnnotationField = false;
-              }
-            }
-          });
-        } else if (annotationFieldsCount === 0 && cleanFields.length > 0) {
-          cleanFields[0].isAnnotationField = true;
-          cleanFields[0].isMetadataField = false;
-        }
+        // Set all fields as metadata by default
+        cleanFields.forEach((field: AnnotationField) => {
+          field.isMetadataField = true;
+          field.isAnnotationField = false;
+        });
 
         setAnnotationFields(cleanFields);
-        setAnnotationLabels(config.annotationLabels || []);
         setNewColumns(config.newColumns || []);
+        
+        // Update selected columns based on existing annotation fields
+        const existingColumnNames = cleanFields
+          .filter((field: AnnotationField) => !field.isNewColumn)
+          .map((field: AnnotationField) => field.csvColumnName);
+        setSelectedColumns(new Set(existingColumnNames));
       }
       setHasChanges(false);
     } catch (error) {
@@ -239,21 +210,6 @@ export function FieldConfig({
     }
   };
 
-  // Annotation Field Management
-  const addAnnotationField = () => {
-    const newField: AnnotationField = {
-      id: Date.now().toString(),
-      csvColumnName: '',
-      fieldName: '',
-      fieldType: 'text',
-      isRequired: false,
-      isMetadataField: false,
-      isAnnotationField: false, // Changed from true to false
-      options: [],
-    };
-    setAnnotationFields([...annotationFields, newField]);
-    setHasChanges(true);
-  };
 
   const updateAnnotationField = (
     id: string,
@@ -314,36 +270,6 @@ export function FieldConfig({
     setHasChanges(true);
   };
 
-  // Annotation Label Management
-  const addAnnotationLabel = () => {
-    const newLabel: AnnotationLabel = {
-      id: Date.now().toString(),
-      name: '',
-      color:
-        predefinedColors[annotationLabels.length % predefinedColors.length],
-      description: '',
-      hotkey: '',
-    };
-    setAnnotationLabels([...annotationLabels, newLabel]);
-    setHasChanges(true);
-  };
-
-  const updateAnnotationLabel = (
-    id: string,
-    updates: Partial<AnnotationLabel>,
-  ) => {
-    setAnnotationLabels((labels) =>
-      labels.map((label) =>
-        label.id === id ? { ...label, ...updates } : label,
-      ),
-    );
-    setHasChanges(true);
-  };
-
-  const removeAnnotationLabel = (id: string) => {
-    setAnnotationLabels((labels) => labels.filter((label) => label.id !== id));
-    setHasChanges(true);
-  };
 
   // New Column Management
   const addNewColumn = () => {
@@ -356,7 +282,24 @@ export function FieldConfig({
       placeholder: '',
       validation: {},
     };
+    
+    // Add to newColumns array
     setNewColumns([...newColumns, newColumn]);
+    
+    // Also add as an annotation field
+    const newField: AnnotationField = {
+      id: Date.now().toString() + '_field',
+      csvColumnName: '',
+      fieldName: '',
+      fieldType: 'text',
+      isRequired: false,
+      isMetadataField: false,
+      isAnnotationField: true,
+      options: [],
+      isNewColumn: true,
+      newColumnId: newColumn.id,
+    };
+    setAnnotationFields([...annotationFields, newField]);
     setHasChanges(true);
   };
 
@@ -388,7 +331,7 @@ export function FieldConfig({
       fieldName: newColumn.columnName,
       fieldType: 'text', // Default to text for new columns
       isRequired: newColumn.isRequired,
-      isMetadataField: false,
+      isMetadataField: false, // Set as metadata by default
       isAnnotationField: true,
       options: [],
       isNewColumn: true,
@@ -408,25 +351,12 @@ export function FieldConfig({
       return;
     }
 
-    // Validate that exactly one annotation field is selected
-    const annotationFieldCount = annotationFields.filter(
-      (field) => field.isAnnotationField,
-    ).length;
-    if (annotationFieldCount === 0) {
+    // Validate that at least one field is configured
+    if (annotationFields.length === 0) {
       showToast({
         title: 'Validation Error',
         description:
-          'Please select exactly one field as "Annotation" before saving.',
-        type: 'error',
-      });
-      return;
-    }
-
-    if (annotationFieldCount > 1) {
-      showToast({
-        title: 'Validation Error',
-        description:
-          'Only one field can be selected as "Annotation". Please deselect other annotation fields.',
+          'Please add at least one field before saving.',
         type: 'error',
       });
       return;
@@ -436,7 +366,6 @@ export function FieldConfig({
     try {
       console.log('Saving field configuration for dataset:', datasetId);
       console.log('Annotation fields:', annotationFields);
-      console.log('Annotation labels:', annotationLabels);
 
       await fieldSelectionAPI.saveDatasetFieldConfig({
         datasetId,
@@ -451,12 +380,7 @@ export function FieldConfig({
           isNewColumn: field.isNewColumn,
           newColumnId: field.newColumnId,
         })),
-        annotationLabels: annotationLabels.map((label) => ({
-          name: label.name,
-          color: label.color,
-          description: label.description,
-          hotkey: label.hotkey,
-        })),
+        annotationLabels: [], // Empty array since we removed annotation labels
         newColumns: newColumns.map((column) => ({
           id: column.id,
           columnName: column.columnName,
@@ -521,29 +445,53 @@ export function FieldConfig({
     );
   };
 
+  // Handle column selection from CSV display
+  const handleColumnClick = (columnName: string) => {
+    // Check if column is already selected
+    if (selectedColumns.has(columnName)) {
+      // Remove from selection and annotation fields
+      setSelectedColumns(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(columnName);
+        return newSet;
+      });
+      
+      // Remove from annotation fields
+      setAnnotationFields(prev => 
+        prev.filter(field => field.csvColumnName !== columnName)
+      );
+    } else {
+      // Add to selection
+      setSelectedColumns(prev => new Set([...prev, columnName]));
+      
+      // Add to annotation fields
+      const newField: AnnotationField = {
+        id: Date.now().toString(),
+        csvColumnName: columnName,
+        fieldName: getSuggestedFieldName(columnName),
+        fieldType: 'text',
+        isRequired: false,
+        isMetadataField: true,
+        isAnnotationField: false,
+        options: [],
+      };
+      
+      setAnnotationFields(prev => [...prev, newField]);
+    }
+    
+    setHasChanges(true);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            Field Configuration
-          </h1>
-          <p className="text-gray-600 mt-1">
-            Configure CSV annotation fields and data mapping
-          </p>
-        </div>
-        <div className="flex items-center space-x-3">
-          <Button
-            variant="outline"
-            onClick={handleSave}
-            disabled={!hasChanges || loading}
-            className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
-          >
-            <Save className="h-4 w-4 mr-2" />
-            Save Configuration
-          </Button>
-        </div>
+      <div className="mb-4">
+        <h1 className="text-3xl font-bold text-gray-900">
+          Field Configuration
+        </h1>
+        <p className="text-gray-600 mt-1">
+          Configure CSV annotation fields and data mapping
+        </p>
       </div>
 
       {/* Loading State */}
@@ -615,6 +563,10 @@ export function FieldConfig({
         <CSVColumnsDisplay
           csvColumns={availableColumns.csvColumns}
           manualColumns={availableColumns.manualColumns}
+          selectedColumns={selectedColumns}
+          onColumnClick={handleColumnClick}
+          title="Select Columns"
+          description="Click on columns below to add them to annotation fields"
         />
       )}
 
@@ -622,619 +574,152 @@ export function FieldConfig({
       {(availableColumns.csvColumns.length > 0 ||
         availableColumns.manualColumns.length > 0) && (
         <div className="space-y-6">
-          {/* Tab Navigation */}
-          <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg w-fit">
-            <button
-              onClick={() => setActiveTab('fields')}
-              className={cn(
-                'px-4 py-2 text-sm font-medium rounded-md transition-colors',
-                activeTab === 'fields'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900',
-              )}
-            >
-              <Database className="h-4 w-4 mr-2 inline" />
-              Annotation Fields
-            </button>
-            <button
-              onClick={() => setActiveTab('labels')}
-              className={cn(
-                'px-4 py-2 text-sm font-medium rounded-md transition-colors',
-                activeTab === 'labels'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900',
-              )}
-            >
-              <Tag className="h-4 w-4 mr-2 inline" />
-              Annotation Labels
-            </button>
-            <button
-              onClick={() => setActiveTab('newColumns')}
-              className={cn(
-                'px-4 py-2 text-sm font-medium rounded-md transition-colors',
-                activeTab === 'newColumns'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900',
-              )}
-            >
-              <Plus className="h-4 w-4 mr-2 inline" />
-              New Columns
-            </button>
-          </div>
 
           {/* Annotation Fields Configuration */}
-          {activeTab === 'fields' && (
-            <Card>
+          <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center space-x-2">
-                      <Database className="h-5 w-5 text-blue-600" />
-                      <span>Annotation Fields</span>
-                    </CardTitle>
-                    <CardDescription>
-                      Configure which fields need annotation and how they should
-                      be labeled
-                    </CardDescription>
-                  </div>
-                  <div className="flex space-x-2">
-                    <Button
-                      onClick={addAnnotationField}
-                      size="sm"
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Field
-                    </Button>
-                    <Button
-                      onClick={() => setActiveTab('newColumns')}
-                      size="sm"
-                      variant="outline"
-                      className="border-green-600 text-green-600 hover:bg-green-50"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add New Column
-                    </Button>
-                  </div>
-                </div>
+                 <div className="flex items-center justify-between">
+                   <div>
+                     <CardTitle className="flex items-center space-x-2">
+                       <Database className="h-5 w-5 text-blue-600" />
+                       <span>Select Field Types</span>
+                     </CardTitle>
+                     <CardDescription>
+                       Configure the type of each field for annotation
+                     </CardDescription>
+                   </div>
+                 </div>
               </CardHeader>
-              <CardContent>
-                {annotationFields.length > 0 ? (
-                  <div className="space-y-4">
-                    {/* Header Row */}
-                    <div className="grid grid-cols-14 gap-4 px-4 py-2 bg-gray-50 rounded-lg font-medium text-sm text-gray-600">
-                      <div className="col-span-2">CSV Column</div>
-                      <div className="col-span-2">Field Name</div>
-                      <div className="col-span-2">Type</div>
-                      <div className="col-span-2">Required</div>
-                      <div className="col-span-2">Metadata</div>
-                      <div className="col-span-2">Annotation</div>
-                      <div className="col-span-2">Actions</div>
-                    </div>
+               <CardContent className="p-3">
+                 {annotationFields.length > 0 ? (
+                   <div className="space-y-2">
+                     {/* Header Row */}
+                     <div className="grid grid-cols-12 gap-3 px-3 py-2 bg-gray-50 rounded-md font-medium text-sm text-gray-600">
+                       <div className="col-span-6">CSV Column</div>
+                       <div className="col-span-4">Type</div>
+                       <div className="col-span-2">Actions</div>
+                     </div>
 
-                    {/* User Note */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                      <div className="flex items-start space-x-2">
-                        <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                        <div className="text-sm text-blue-800">
-                          <p className="font-medium mb-1">
-                            Annotation Field Selection
-                          </p>
-                          <p>
-                            • Only <strong>one field</strong> can be selected as
-                            "Annotation" (radio button)
-                          </p>
-                          <p>
-                            • Multiple fields can be selected as "Metadata"
-                            (checkboxes) - these fields will be displayed along
-                            with the annotation field
-                          </p>
-                          <p>
-                            • Annotation and Metadata fields are mutually
-                            exclusive
-                          </p>
-                        </div>
-                      </div>
-                    </div>
 
-                    {/* Field Rows */}
-                    {annotationFields.map((field) => (
-                      <div
-                        key={field.id}
-                        className="grid grid-cols-14 gap-4 items-center p-4 bg-gray-50 rounded-lg border border-gray-200"
-                      >
-                        <div className="col-span-2">
-                          <select
-                            value={
-                              field.isNewColumn
-                                ? `new-${field.newColumnId}`
-                                : field.csvColumnName
-                            }
-                            onChange={(e) => {
-                              const selectedValue = e.target.value;
-                              if (selectedValue.startsWith('new-')) {
-                                const newColumnId = selectedValue.replace(
-                                  'new-',
-                                  '',
-                                );
-                                const newColumn = newColumns.find(
-                                  (col) => col.id === newColumnId,
-                                );
-                                updateAnnotationField(field.id, {
-                                  csvColumnName: newColumn?.columnName || '',
-                                  fieldName: newColumn?.columnName || '',
-                                  isNewColumn: true,
-                                  newColumnId: newColumnId,
-                                });
-                              } else {
-                                updateAnnotationField(field.id, {
-                                  csvColumnName: selectedValue,
-                                  fieldName:
-                                    getSuggestedFieldName(selectedValue),
-                                  isNewColumn: false,
-                                  newColumnId: undefined,
-                                });
-                              }
-                            }}
-                            className="w-full h-9 px-3 py-1 border border-gray-300 bg-white rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          >
-                            <option value="">Select Column</option>
-                            {availableColumns.csvColumns.length > 0 && (
-                              <>
-                                {availableColumns.csvColumns.map((column) => (
-                                  <option key={column.name} value={column.name}>
-                                    {column.name}
-                                  </option>
-                                ))}
-                              </>
-                            )}
-                            {availableColumns.manualColumns.length > 0 && (
-                              <>
-                                {availableColumns.manualColumns.map(
-                                  (column) => (
-                                    <option
-                                      key={column.name}
-                                      value={column.name}
-                                    >
-                                      {column.name}
-                                    </option>
-                                  ),
-                                )}
-                              </>
-                            )}
-                            {newColumns.length > 0 && (
-                              <>
-                                {newColumns.map((column) => (
-                                  <option
-                                    key={`new-${column.id}`}
-                                    value={`new-${column.id}`}
-                                  >
-                                    {column.columnName}
-                                  </option>
-                                ))}
-                              </>
-                            )}
-                            {availableColumns.csvColumns.length === 0 &&
-                              availableColumns.manualColumns.length === 0 &&
-                              newColumns.length === 0 && (
-                                <option disabled>No columns available</option>
-                              )}
-                          </select>
-                          {availableColumns.csvColumns.length === 0 &&
-                            availableColumns.manualColumns.length === 0 && (
-                              <p className="text-xs text-red-500 mt-1">
-                                No columns available. Upload a CSV file first.
-                              </p>
-                            )}
-                        </div>
+                     {/* Field Rows */}
+                     {annotationFields.map((field) => {
+                       const newColumn = field.isNewColumn ? newColumns.find(col => col.id === field.newColumnId) : null;
+                       return (
+                         <div
+                           key={field.id}
+                           className={cn(
+                             "grid grid-cols-12 gap-3 items-center p-3 rounded-md border border-gray-200",
+                             field.isNewColumn ? "bg-gray-200" : "bg-gray-50"
+                           )}
+                         >
+                             <div className="col-span-6">
+                               {field.isNewColumn ? (
+                                 <Input
+                                   placeholder="Column name"
+                                   value={newColumn?.columnName || ''}
+                                   onChange={(e) => {
+                                     updateNewColumn(field.newColumnId!, {
+                                       columnName: e.target.value,
+                                     });
+                                     updateAnnotationField(field.id, {
+                                       csvColumnName: e.target.value,
+                                       fieldName: e.target.value,
+                                     });
+                                   }}
+                                   className="h-8 text-sm bg-white border-gray-300"
+                                 />
+                               ) : (
+                                 <div className="flex items-center h-8 px-2 py-1 bg-gray-50 border border-gray-200 rounded text-sm text-gray-700">
+                                   {field.csvColumnName}
+                                 </div>
+                               )}
+                             </div>
 
-                        <div className="col-span-2">
-                          <Input
-                            placeholder="Field Name"
-                            value={field.fieldName}
-                            onChange={(e) =>
-                              updateAnnotationField(field.id, {
-                                fieldName: e.target.value,
-                              })
-                            }
-                            className="h-9"
-                          />
-                        </div>
+                           <div className="col-span-4">
+                             <select
+                               value={field.isNewColumn ? newColumn?.columnType || 'text' : field.fieldType}
+                               onChange={(e) => {
+                                 if (field.isNewColumn) {
+                                   updateNewColumn(field.newColumnId!, {
+                                     columnType: e.target.value as any,
+                                   });
+                                 } else {
+                                   updateAnnotationField(field.id, {
+                                     fieldType: e.target.value as any,
+                                   });
+                                 }
+                               }}
+                               className="w-full h-8 px-2 py-1 border border-gray-300 bg-white rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                             >
+                               <option value="text">Text</option>
+                               <option value="image">Image</option>
+                               <option value="audio">Audio</option>
+                               {field.isNewColumn && (
+                                 <>
+                                   <option value="number">Number</option>
+                                   <option value="select">Select</option>
+                                   <option value="textarea">Textarea</option>
+                                   <option value="rating">Rating</option>
+                                 </>
+                               )}
+                             </select>
+                           </div>
 
-                        <div className="col-span-2">
-                          <select
-                            value={field.fieldType}
-                            onChange={(e) =>
-                              updateAnnotationField(field.id, {
-                                fieldType: e.target.value as any,
-                              })
-                            }
-                            className="w-full h-9 px-3 py-1 border border-gray-300 bg-white rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          >
-                            <option value="text">Text</option>
-                            <option value="image">Image</option>
-                            <option value="audio">Audio</option>
-                          </select>
-                        </div>
-
-                        <div className="col-span-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              updateAnnotationField(field.id, {
-                                isRequired: !field.isRequired,
-                              })
-                            }
-                            className={cn(
-                              'h-8 px-3 text-xs',
-                              field.isRequired
-                                ? 'bg-green-100 text-green-700 border border-green-200'
-                                : 'bg-gray-100 text-gray-600',
-                            )}
-                          >
-                            {field.isRequired ? 'Required' : 'Optional'}
-                          </Button>
-                        </div>
-
-                        <div className="col-span-2">
-                          <label className="flex items-center space-x-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={field.isMetadataField}
-                              onChange={(e) => {
-                                toggleMetadataField(field.id, e.target.checked);
-                              }}
-                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                            />
-                            <span className="text-sm text-gray-700">
-                              Metadata
-                            </span>
-                          </label>
-                        </div>
-
-                        <div className="col-span-2">
-                          <label className="flex items-center space-x-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="annotationField"
-                              checked={field.isAnnotationField}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  selectAnnotationField(field.id);
-                                }
-                              }}
-                              className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300"
-                            />
-                            <span className="text-sm text-gray-700">
-                              Annotation
-                            </span>
-                          </label>
-                        </div>
-
-                        <div className="col-span-2 flex items-center space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeAnnotationField(field.id)}
-                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                           <div className="col-span-2 flex items-center justify-center">
+                             <Button
+                               variant="ghost"
+                               size="sm"
+                               onClick={() => {
+                                 if (field.isNewColumn) {
+                                   removeNewColumn(field.newColumnId!);
+                                 }
+                                 removeAnnotationField(field.id);
+                               }}
+                               className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                             >
+                               <Trash2 className="h-3.5 w-3.5" />
+                             </Button>
+                           </div>
+                         </div>
+                       );
+                     })}
                   </div>
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <Database className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                    <p className="text-lg font-medium mb-2">
-                      No annotation fields configured yet
-                    </p>
-                    <p className="text-sm">
-                      Add fields to define what needs to be annotated
-                    </p>
-                  </div>
-                )}
+                 ) : (
+                   <div className="text-center py-8 text-gray-500">
+                     <Database className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                     <p className="text-base font-medium mb-1">
+                       Please select columns from above
+                     </p>
+                     <p className="text-sm">
+                       Click on columns in the "Select Columns" section to add them here
+                     </p>
+                   </div>
+                 )}
               </CardContent>
+              
+               {/* Fixed Footer with Save Button */}
+               <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
+                 <div className="flex justify-between">
+                   <Button
+                     onClick={addNewColumn}
+                     size="sm"
+                     className="bg-green-600 hover:bg-green-700 h-8 px-3 text-sm"
+                   >
+                     <Plus className="h-3.5 w-3.5 mr-1.5" />
+                     Add New Field
+                   </Button>
+                   <Button
+                     variant="outline"
+                     onClick={handleSave}
+                     disabled={!hasChanges || loading}
+                     className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600 h-8 px-3 text-sm"
+                   >
+                     <Save className="h-3.5 w-3.5 mr-1.5" />
+                     Save Configuration
+                   </Button>
+                 </div>
+               </div>
             </Card>
-          )}
-
-          {/* Annotation Labels Configuration */}
-          {activeTab === 'labels' && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center space-x-2">
-                      <Tag className="h-5 w-5 text-green-600" />
-                      <span>Annotation Labels</span>
-                    </CardTitle>
-                    <CardDescription>
-                      Define the labels that annotators will use to tag the data
-                    </CardDescription>
-                  </div>
-                  <Button
-                    onClick={addAnnotationLabel}
-                    size="sm"
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Label
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {annotationLabels.length > 0 ? (
-                  <div className="space-y-4">
-                    {/* Header Row */}
-                    <div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-50 rounded-lg font-medium text-sm text-gray-600">
-                      <div className="col-span-3">Label Name</div>
-                      <div className="col-span-2">Color</div>
-                      <div className="col-span-1">Hotkey</div>
-                      <div className="col-span-5">Description</div>
-                      <div className="col-span-1">Actions</div>
-                    </div>
-
-                    {/* Label Rows */}
-                    {annotationLabels.map((label) => (
-                      <div
-                        key={label.id}
-                        className="grid grid-cols-12 gap-4 items-center p-4 bg-gray-50 rounded-lg border border-gray-200"
-                      >
-                        <div className="col-span-3">
-                          <Input
-                            placeholder="Label name"
-                            value={label.name}
-                            onChange={(e) =>
-                              updateAnnotationLabel(label.id, {
-                                name: e.target.value,
-                              })
-                            }
-                            className="h-9"
-                          />
-                        </div>
-
-                        <div className="col-span-2">
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="color"
-                              value={label.color}
-                              onChange={(e) =>
-                                updateAnnotationLabel(label.id, {
-                                  color: e.target.value,
-                                })
-                              }
-                              className="w-9 h-9 rounded border border-gray-300 cursor-pointer"
-                            />
-                            <span className="text-xs text-gray-500">
-                              {label.color}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="col-span-1">
-                          <Input
-                            placeholder="K"
-                            maxLength={1}
-                            value={label.hotkey || ''}
-                            onChange={(e) =>
-                              updateAnnotationLabel(label.id, {
-                                hotkey: e.target.value.toUpperCase(),
-                              })
-                            }
-                            className="h-9 text-center"
-                          />
-                        </div>
-
-                        <div className="col-span-5">
-                          <Input
-                            placeholder="Label description"
-                            value={label.description || ''}
-                            onChange={(e) =>
-                              updateAnnotationLabel(label.id, {
-                                description: e.target.value,
-                              })
-                            }
-                            className="h-9"
-                          />
-                        </div>
-
-                        <div className="col-span-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeAnnotationLabel(label.id)}
-                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <Tag className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                    <p className="text-lg font-medium mb-2">
-                      No annotation labels defined yet
-                    </p>
-                    <p className="text-sm">
-                      Add labels to define what annotators will tag
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* New Columns Configuration */}
-          {activeTab === 'newColumns' && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center space-x-2">
-                      <Plus className="h-5 w-5 text-green-600" />
-                      <span>New Columns</span>
-                    </CardTitle>
-                    <CardDescription>
-                      Create custom columns that will be added to the exported
-                      CSV
-                    </CardDescription>
-                  </div>
-                  <Button
-                    onClick={addNewColumn}
-                    size="sm"
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Column
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {newColumns.length > 0 ? (
-                  <div className="space-y-4">
-                    {/* Header Row */}
-                    <div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-50 rounded-lg font-medium text-sm text-gray-600">
-                      <div className="col-span-3">Column Name</div>
-                      <div className="col-span-2">Type</div>
-                      <div className="col-span-1">Required</div>
-                      <div className="col-span-2">Default Value</div>
-                      <div className="col-span-2">Placeholder</div>
-                      <div className="col-span-2">Actions</div>
-                    </div>
-
-                    {/* Column Rows */}
-                    {newColumns.map((column) => (
-                      <div
-                        key={column.id}
-                        className="grid grid-cols-12 gap-4 items-center p-4 bg-gray-50 rounded-lg border border-gray-200"
-                      >
-                        <div className="col-span-3">
-                          <Input
-                            placeholder="Column name"
-                            value={column.columnName}
-                            onChange={(e) =>
-                              updateNewColumn(column.id, {
-                                columnName: e.target.value,
-                              })
-                            }
-                            className="h-9"
-                          />
-                        </div>
-
-                        <div className="col-span-2">
-                          <select
-                            value={column.columnType}
-                            onChange={(e) =>
-                              updateNewColumn(column.id, {
-                                columnType: e.target.value as any,
-                              })
-                            }
-                            className="w-full h-9 px-3 py-1 border border-gray-300 bg-white rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          >
-                            <option value="text">Text</option>
-                            <option value="number">Number</option>
-                            <option value="select">Select</option>
-                            <option value="textarea">Textarea</option>
-                            <option value="rating">Rating</option>
-                          </select>
-                        </div>
-
-                        <div className="col-span-1">
-                          <label className="flex items-center space-x-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={column.isRequired}
-                              onChange={(e) =>
-                                updateNewColumn(column.id, {
-                                  isRequired: e.target.checked,
-                                })
-                              }
-                              className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                            />
-                            <span className="text-sm text-gray-700">
-                              Required
-                            </span>
-                          </label>
-                        </div>
-
-                        <div className="col-span-2">
-                          <Input
-                            placeholder="Default value"
-                            value={column.defaultValue || ''}
-                            onChange={(e) =>
-                              updateNewColumn(column.id, {
-                                defaultValue: e.target.value,
-                              })
-                            }
-                            className="h-9"
-                          />
-                        </div>
-
-                        <div className="col-span-2">
-                          <Input
-                            placeholder="Placeholder text"
-                            value={column.placeholder || ''}
-                            onChange={(e) =>
-                              updateNewColumn(column.id, {
-                                placeholder: e.target.value,
-                              })
-                            }
-                            className="h-9"
-                          />
-                        </div>
-
-                        <div className="col-span-2 flex items-center space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeNewColumn(column.id)}
-                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-
-                        {/* Additional Options for Select Type */}
-                        {column.columnType === 'select' && (
-                          <div className="col-span-12 mt-3">
-                            <Label className="text-sm font-medium text-gray-700">
-                              Select Options (one per line)
-                            </Label>
-                            <textarea
-                              placeholder="Option 1&#10;Option 2&#10;Option 3"
-                              value={column.options?.join('\n') || ''}
-                              onChange={(e) =>
-                                updateNewColumn(column.id, {
-                                  options: e.target.value
-                                    .split('\n')
-                                    .filter((opt) => opt.trim()),
-                                })
-                              }
-                              className="w-full h-20 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mt-1"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <Plus className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-                    <p className="text-lg font-medium mb-2">
-                      No new columns defined yet
-                    </p>
-                    <p className="text-sm">
-                      Add custom columns to be included in the exported CSV
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
         </div>
       )}
 
@@ -1249,36 +734,12 @@ export function FieldConfig({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-7 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-600">
                   {annotationFields.length}
                 </div>
                 <div className="text-sm text-gray-600">Fields Configured</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">
-                  {annotationFields.filter((f) => f.isRequired).length}
-                </div>
-                <div className="text-sm text-gray-600">Required Fields</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600">
-                  {annotationFields.filter((f) => f.isMetadataField).length}
-                </div>
-                <div className="text-sm text-gray-600">Metadata Fields</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-orange-600">
-                  {annotationFields.filter((f) => f.isAnnotationField).length}
-                </div>
-                <div className="text-sm text-gray-600">Annotation Fields</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-indigo-600">
-                  {annotationLabels.length}
-                </div>
-                <div className="text-sm text-gray-600">Labels Defined</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-gray-600">

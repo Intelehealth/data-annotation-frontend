@@ -126,7 +126,7 @@ export default function AddDatasetPage() {
       showToast({
         title: 'Please wait',
         description: 'Name validation is in progress. Please wait a moment.',
-        type: 'warning',
+        type: 'info',
       });
       return;
     }

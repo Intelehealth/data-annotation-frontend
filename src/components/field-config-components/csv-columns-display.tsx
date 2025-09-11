@@ -3,6 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Database, FileText, Plus } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface CSVColumn {
   name: string;
@@ -14,6 +15,8 @@ interface CSVColumn {
 interface CSVColumnsDisplayProps {
   csvColumns: CSVColumn[];
   manualColumns?: CSVColumn[];
+  selectedColumns: Set<string>;
+  onColumnClick: (columnName: string) => void;
   title?: string;
   description?: string;
 }
@@ -21,6 +24,8 @@ interface CSVColumnsDisplayProps {
 export function CSVColumnsDisplay({
   csvColumns,
   manualColumns = [],
+  selectedColumns,
+  onColumnClick,
   title = 'Available Columns',
   description = 'Columns available for annotation configuration',
 }: CSVColumnsDisplayProps) {
@@ -52,15 +57,24 @@ export function CSVColumnsDisplay({
               </h4>
               <div className="overflow-x-auto">
                 <div className="grid grid-cols-10 gap-2 min-w-max">
-                  {csvColumns.map((column) => (
-                    <span
-                      key={column.name}
-                      className="px-3 py-1 bg-blue-100 text-blue-800 text-sm border border-blue-200 text-center truncate rounded-sm"
-                      title={column.name}
-                    >
-                      {column.name}
-                    </span>
-                  ))}
+                  {csvColumns.map((column) => {
+                    const isSelected = selectedColumns.has(column.name);
+                    return (
+                      <span
+                        key={column.name}
+                        onClick={() => onColumnClick(column.name)}
+                        className={cn(
+                          "px-3 py-1 text-sm border text-center truncate rounded-sm cursor-pointer transition-all duration-200 hover:scale-105",
+                          isSelected
+                            ? "bg-green-100 text-green-800 border-green-200 hover:bg-green-200"
+                            : "bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200"
+                        )}
+                        title={`${column.name} - Click to ${isSelected ? 'remove' : 'add'} to annotation fields`}
+                      >
+                        {column.name}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -75,15 +89,24 @@ export function CSVColumnsDisplay({
               </h4>
               <div className="overflow-x-auto">
                 <div className="grid grid-cols-10 gap-2 min-w-max">
-                  {manualColumns.map((column) => (
-                    <span
-                      key={column.name}
-                      className="px-3 py-1 bg-green-100 text-green-800 text-sm border border-green-200 text-center truncate rounded-sm"
-                      title={column.name}
-                    >
-                      {column.name}
-                    </span>
-                  ))}
+                  {manualColumns.map((column) => {
+                    const isSelected = selectedColumns.has(column.name);
+                    return (
+                      <span
+                        key={column.name}
+                        onClick={() => onColumnClick(column.name)}
+                        className={cn(
+                          "px-3 py-1 text-sm border text-center truncate rounded-sm cursor-pointer transition-all duration-200 hover:scale-105",
+                          isSelected
+                            ? "bg-green-100 text-green-800 border-green-200 hover:bg-green-200"
+                            : "bg-green-100 text-green-800 border-green-200 hover:bg-green-300"
+                        )}
+                        title={`${column.name} - Click to ${isSelected ? 'remove' : 'add'} to annotation fields`}
+                      >
+                        {column.name}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             </div>
