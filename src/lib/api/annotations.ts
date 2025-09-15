@@ -17,6 +17,7 @@ export interface AnnotationData {
 
 export interface CreateAnnotationRequest {
   csvImportId: string;
+  userId?: string;
   csvRowIndex: number;
   fieldName: string;
   type:
@@ -26,7 +27,8 @@ export interface CreateAnnotationRequest {
     | 'CLASSIFICATION'
     | 'POLYGON'
     | 'POINT'
-    | 'LINE';
+    | 'LINE'
+    | 'NEW_COLUMN_VALUE';
   label: string;
   data: AnnotationData;
   isAiGenerated?: boolean;
@@ -37,7 +39,7 @@ export interface CreateAnnotationRequest {
 export interface Annotation {
   _id: string;
   csvImportId: string;
-  userId: string;
+  userId?: string;
   csvRowIndex: number;
   fieldName: string;
   type: string;

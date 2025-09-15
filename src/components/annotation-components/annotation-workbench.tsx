@@ -5,26 +5,22 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   ChevronLeft,
   ChevronRight,
-  Save,
-  Undo,
-  Redo,
-  Play,
-  Pause,
-  SkipForward,
-  SkipBack,
-  Search,
-  Filter,
-  CheckCircle,
-  Clock,
   AlertCircle,
-  FileText,
   Image as ImageIcon,
   AudioLines,
   Loader2,
-  Tag,
+  Edit3,
+  GripVertical,
+  Eye,
+  X,
+  Volume2,
+  CheckCircle,
+  Clock,
+  FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,11 +32,7 @@ import {
 } from '@/lib/api/csv-imports';
 import { fieldSelectionAPI } from '@/lib/api/field-config';
 import { csvProcessingAPI } from '@/lib/api/csv-processing';
-
-// Import annotation components
-import { TextAnnotationTool } from '@/components/annotation-components/text-annotation-tool';
-import { ImageAnnotationTool } from '@/components/annotation-components/image-annotation-tool';
-import { AudioAnnotationTool } from '@/components/annotation-components/audio-annotation-tool';
+import { RowFooter, NewColumnDataPanel } from '@/components/new-column-components';
 
 interface Task {
   id: string;
@@ -56,6 +48,22 @@ interface Task {
   updatedAt: Date;
 }
 
+interface NewColumnData {
+  [fieldName: string]: string;
+}
+
+interface ImageOverlay {
+  isOpen: boolean;
+  imageUrl: string;
+  imageUrls: string[];
+  currentIndex: number;
+}
+
+interface AudioOverlay {
+  isOpen: boolean;
+  audioUrl: string;
+}
+
 interface AnnotationWorkbenchProps {
   csvImportId: string;
   datasetId: string;
@@ -68,10 +76,9 @@ export function AnnotationWorkbench({
   const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [metadata, setMetadata] = useState<Record<string, any>>({});
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [newColumnData, setNewColumnData] = useState<NewColumnData>({});
   const [history, setHistory] = useState<any[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
@@ -82,32 +89,38 @@ export function AnnotationWorkbench({
   const [annotationConfig, setAnnotationConfig] =
     useState<AnnotationConfig | null>(null);
   const [csvImport, setCsvImport] = useState<CSVImport | null>(null);
-  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
-  const [showContent, setShowContent] = useState(false);
-  const [csvRowsCollapsed, setCsvRowsCollapsed] = useState(false);
-  const [showLabelsModal, setShowLabelsModal] = useState(false);
-  const labelsModalRef = useRef<HTMLDivElement>(null);
-  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
+  const [orderedMetadataFields, setOrderedMetadataFields] = useState<AnnotationField[]>([]);
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [expandedTextFields, setExpandedTextFields] = useState<Set<string>>(new Set());
+  const [imageOverlay, setImageOverlay] = useState<ImageOverlay>({
+    isOpen: false,
+    imageUrl: '',
+    imageUrls: [],
+    currentIndex: 0,
+  });
+  const [audioOverlay, setAudioOverlay] = useState<AudioOverlay>({
+    isOpen: false,
+    audioUrl: '',
+  });
+  const [draggedField, setDraggedField] = useState<string | null>(null);
 
-  // Handle click outside modal
+  // Initialize ordered metadata fields when annotation config changes
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        labelsModalRef.current &&
-        !labelsModalRef.current.contains(event.target as Node)
-      ) {
-        setShowLabelsModal(false);
-      }
-    };
-
-    if (showLabelsModal) {
-      document.addEventListener('mousedown', handleClickOutside);
+    if (annotationConfig) {
+      // Metadata fields are existing CSV columns that are NOT new columns
+      const metadataFields = annotationConfig.annotationFields.filter(
+        (field) => field.isMetadataField && !field.isNewColumn
+      );
+      console.log('Metadata fields (existing CSV columns only):', metadataFields.map(f => ({
+        csvColumnName: f.csvColumnName,
+        fieldName: f.fieldName,
+        isMetadataField: f.isMetadataField,
+        isNewColumn: f.isNewColumn,
+        isAnnotationField: f.isAnnotationField
+      })));
+      setOrderedMetadataFields(metadataFields);
     }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showLabelsModal]);
+  }, [annotationConfig]);
 
   // Load CSV import data and annotation config
   useEffect(() => {
@@ -145,7 +158,7 @@ export function AnnotationWorkbench({
             const annotationConfig: AnnotationConfig = {
               _id: config._id || '',
               csvImportId: csvImportId,
-              userId: user?._id || '',
+              userId: user?._id,
               annotationFields: config.annotationFields || [],
               annotationLabels: config.annotationLabels || [],
               rowAnnotations: [],
@@ -190,7 +203,7 @@ export function AnnotationWorkbench({
           const defaultConfig: AnnotationConfig = {
             _id: '',
             csvImportId,
-            userId: user?._id || '',
+            userId: user?._id,
             annotationFields: [],
             rowAnnotations: [],
             totalRows: csvData.totalRows,
@@ -258,27 +271,23 @@ export function AnnotationWorkbench({
         console.log('Tasks created:', taskData.length, 'tasks');
         setTasks(taskData);
 
-        // Set the first non-metadata field as selected by default
+        // Initialize new column data for annotation fields
         if (annotationConfig && annotationConfig.annotationFields.length > 0) {
-          const annotationField = annotationConfig.annotationFields.find(
-            (field: any) => !field.isMetadataField,
+          const annotationFields = annotationConfig.annotationFields.filter(
+            (field) => field.isNewColumn || field.isAnnotationField
           );
-          console.log(
-            'Looking for annotation field in config:',
-            annotationConfig.annotationFields,
-          );
-          console.log('Found annotation field:', annotationField);
-          if (annotationField) {
-            console.log(
-              'Setting selected field ID to:',
-              annotationField.csvColumnName,
-            );
-            setSelectedFieldId(annotationField.csvColumnName);
-          } else {
-            console.log(
-              'No annotation field found (all fields are metadata)',
-            );
-          }
+          console.log('Annotation fields (new columns):', annotationFields.map(f => ({
+            csvColumnName: f.csvColumnName,
+            fieldName: f.fieldName,
+            isMetadataField: f.isMetadataField,
+            isAnnotationField: f.isAnnotationField,
+            isNewColumn: f.isNewColumn
+          })));
+          const initialNewColumnData: NewColumnData = {};
+          annotationFields.forEach((field) => {
+            initialNewColumnData[field.fieldName] = '';
+          });
+          setNewColumnData(initialNewColumnData);
         }
       } catch (err) {
         console.error('Error loading data:', err);
@@ -344,26 +353,26 @@ export function AnnotationWorkbench({
     return 'text';
   };
 
-  // Get metadata fields (isMetadataField: true)
+  // Get metadata fields (existing CSV columns that are NOT new columns)
   const getMetadataFields = (): AnnotationField[] => {
     if (!annotationConfig) return [];
     return annotationConfig.annotationFields.filter(
-      (field) => field.isMetadataField,
+      (field) => field.isMetadataField && !field.isNewColumn,
     );
   };
 
-  // Get annotation fields (fields that are not metadata)
+  // Get annotation fields (new columns that need annotation)
   const getAnnotationFields = (): AnnotationField[] => {
     if (!annotationConfig) return [];
     return annotationConfig.annotationFields.filter(
-      (field) => !field.isMetadataField,
+      (field) => field.isNewColumn || field.isAnnotationField,
     );
   };
 
   // Export annotations to CSV
   const exportAnnotationsToCSV = useCallback(async () => {
-    if (!csvImport || annotations.length === 0) {
-      console.log('Cannot export: missing data or no annotations');
+    if (!csvImport) {
+      console.log('Cannot export: missing CSV data');
       return;
     }
 
@@ -383,54 +392,21 @@ export function AnnotationWorkbench({
         // Start with original CSV data
         const exportedRow = { ...row.data };
 
-        // Add annotation columns for each annotation field
-        const annotationFields = getAnnotationFields();
+        // Add new column data for each annotation field
+        const annotationFields = annotationConfig?.annotationFields.filter(
+          (field) => field.isAnnotationField
+        ) || [];
+
         annotationFields.forEach((field) => {
-          const fieldAnnotations = rowAnnotations.filter(
-            (ann) => ann.fieldName === field.fieldName && ann.type !== 'NEW_COLUMN_VALUE',
+          const fieldAnnotation = rowAnnotations.find(
+            (ann) => ann.fieldName === field.fieldName,
           );
 
-          if (fieldAnnotations.length > 0) {
-            // Create annotation column name
-            const annotationColumnName = `${field.fieldName}_annotations`;
-
-            // Format annotations based on type
-            const formattedAnnotations = fieldAnnotations
-              .map((ann) => {
-                switch (ann.type) {
-                  case 'TEXT_NER':
-                    return `${ann.label}: "${ann.data.text}" (${ann.data.start}-${ann.data.end})`;
-                  case 'BBOX':
-                    const imageInfo = ann.data.imageUrl
-                      ? ` on ${ann.data.imageUrl.split('/').pop()}`
-                      : '';
-                    return `${ann.label}: [${ann.data.x}, ${ann.data.y}, ${ann.data.width}, ${ann.data.height}]${imageInfo}`;
-                  case 'AUDIO_TRANSCRIPTION':
-                    return `${ann.label}: "${ann.data.transcription}" (${ann.data.startTime}s-${ann.data.endTime}s)`;
-                  case 'CLASSIFICATION':
-                    return `${ann.label}: ${ann.data.value}`;
-                  default:
-                    return `${ann.label}: ${JSON.stringify(ann.data)}`;
-                }
-              })
-              .join('; ');
-
-            exportedRow[annotationColumnName] = formattedAnnotations;
+          if (fieldAnnotation && fieldAnnotation.data?.value) {
+            exportedRow[field.fieldName] = fieldAnnotation.data.value;
           } else {
-            // No annotations for this field
-            const annotationColumnName = `${field.fieldName}_annotations`;
-            exportedRow[annotationColumnName] = '';
+            exportedRow[field.fieldName] = '';
           }
-        });
-
-        // Add new column values
-        const newColumnValues = rowAnnotations.filter(
-          (ann) => ann.type === 'NEW_COLUMN_VALUE',
-        );
-        
-        newColumnValues.forEach((newColumnValue) => {
-          // Use the fieldName as the column name (this is the new column name)
-          exportedRow[newColumnValue.fieldName] = newColumnValue.data.columnValue || '';
         });
 
         exportedRows.push(exportedRow);
@@ -505,7 +481,7 @@ export function AnnotationWorkbench({
       console.error('Error exporting CSV:', error);
       setError('Failed to export CSV');
     }
-  }, [csvImport, annotations, getAnnotationFields]);
+  }, [csvImport, annotations, annotationConfig]);
 
   // Autosave functionality
   const saveProgress = useCallback(async () => {
@@ -513,54 +489,62 @@ export function AnnotationWorkbench({
 
     setIsSaving(true);
     try {
-      // Save metadata changes
-      // This would need to be implemented based on your metadata storage strategy
+      // Save new column data as annotations
+      const annotationFields = annotationConfig?.annotationFields.filter(
+        (field) => field.isNewColumn || field.isAnnotationField
+      ) || [];
 
-      // Save annotations
-      for (const annotation of annotations) {
-        // Check if this is an existing annotation (valid MongoDB ObjectId) or a new one (temporary ID)
-        const isExistingAnnotation =
-          annotation._id &&
-          /^[0-9a-fA-F]{24}$/.test(annotation._id) &&
-          !annotation._id.startsWith('temp_'); // MongoDB ObjectId pattern, not temporary
+      for (const field of annotationFields) {
+        const fieldValue = newColumnData[field.fieldName];
+        if (fieldValue && fieldValue.trim()) {
+          // Check if annotation already exists for this field
+          const existingAnnotation = annotations.find(
+            (ann) => ann.fieldName === field.fieldName
+          );
 
-        if (isExistingAnnotation) {
-          // Update existing annotation
-          await AnnotationsAPI.update(annotation._id, {
+          const annotationData = {
             csvImportId,
             csvRowIndex: currentTask.rowIndex,
-            fieldName: annotation.fieldName,
-            type: annotation.type as any,
-            label: annotation.label,
-            data: annotation.data,
-            isAiGenerated: annotation.isAiGenerated,
-            confidenceScore: annotation.confidenceScore,
-            metadata: annotation.metadata,
-          });
-        } else {
-          // Create new annotation (either no ID or temporary ID)
-          const newAnnotation = await AnnotationsAPI.create({
-            csvImportId,
-            csvRowIndex: currentTask.rowIndex,
-            fieldName: annotation.fieldName,
-            type: annotation.type as any,
-            label: annotation.label,
-            data: annotation.data,
-            isAiGenerated: annotation.isAiGenerated,
-            confidenceScore: annotation.confidenceScore,
-            metadata: annotation.metadata,
-          });
+            fieldName: field.fieldName,
+            type: 'CLASSIFICATION' as any,
+            label: field.fieldName,
+            data: { value: fieldValue },
+            isAiGenerated: false,
+            confidenceScore: 1.0,
+            metadata: {},
+          };
 
-          // Update the annotation in state with the real ID from the backend
-          annotation._id = newAnnotation._id;
+          if (existingAnnotation && existingAnnotation._id && 
+              /^[0-9a-fA-F]{24}$/.test(existingAnnotation._id)) {
+            // Update existing annotation
+            await AnnotationsAPI.update(existingAnnotation._id, annotationData);
+          } else {
+          // Create new annotation
+          const newAnnotation = await AnnotationsAPI.create(annotationData);
+          // Update the annotation in state
+          setAnnotations((prev) => [
+            ...prev.filter((a) => a.fieldName !== field.fieldName),
+            { 
+              ...annotationData, 
+              _id: newAnnotation._id,
+              ...(user?._id && { userId: user._id }),
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            } as Annotation,
+          ]);
+          }
         }
       }
 
-      // Update task status
-      const updatedTask = {
+      // Update task status based on whether new column data exists
+      const hasNewColumnData = Object.values(newColumnData).some(value => value && value.trim());
+      const updatedStatus: 'pending' | 'in_progress' | 'completed' | 'needs_review' = hasNewColumnData ? 'completed' : 'pending';
+
+      const updatedTask: Task = {
         ...currentTask,
         metadata,
         annotations,
+        status: updatedStatus,
         updatedAt: new Date(),
       };
 
@@ -575,13 +559,13 @@ export function AnnotationWorkbench({
     } finally {
       setIsSaving(false);
     }
-  }, [currentTask, metadata, annotations, csvImportId]);
+  }, [currentTask, metadata, annotations, newColumnData, csvImportId, annotationConfig]);
 
-  // Auto-save every 30 seconds
+  // Auto-save every 5 seconds
   useEffect(() => {
     if (!autoSaveEnabled) return;
 
-    const interval = setInterval(saveProgress, 30000);
+    const interval = setInterval(saveProgress, 5000);
     return () => clearInterval(interval);
   }, [saveProgress, autoSaveEnabled]);
 
@@ -603,6 +587,7 @@ export function AnnotationWorkbench({
       const prevState = history[historyIndex - 1];
       setMetadata(prevState.metadata);
       setAnnotations(prevState.annotations);
+      setNewColumnData(prevState.newColumnData);
       setHistoryIndex((prev) => prev - 1);
     }
   }, [history, historyIndex]);
@@ -612,6 +597,7 @@ export function AnnotationWorkbench({
       const nextState = history[historyIndex + 1];
       setMetadata(nextState.metadata);
       setAnnotations(nextState.annotations);
+      setNewColumnData(nextState.newColumnData);
       setHistoryIndex((prev) => prev + 1);
     }
   }, [history, historyIndex]);
@@ -642,10 +628,6 @@ export function AnnotationWorkbench({
             e.preventDefault();
             navigateTask('next');
             break;
-          case 'h':
-            e.preventDefault();
-            setCsvRowsCollapsed(!csvRowsCollapsed);
-            break;
         }
       }
     };
@@ -662,19 +644,135 @@ export function AnnotationWorkbench({
     }
   };
 
-  const filteredTasks = tasks.filter((task) => {
-    const matchesSearch = task.fileName
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase());
-    const matchesStatus =
-      statusFilter === 'all' || task.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const jumpToRow = (rowIndex: number) => {
+    const taskIndex = tasks.findIndex(task => task.rowIndex === rowIndex);
+    if (taskIndex !== -1) {
+      setCurrentTaskIndex(taskIndex);
+    }
+  };
 
-  const annotatedTasks = filteredTasks.filter(
+  // Drag and drop handlers for metadata field reordering
+  const handleDragStart = (e: React.DragEvent, fieldName: string) => {
+    setDraggedField(fieldName);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, targetFieldName: string) => {
+    e.preventDefault();
+    if (!draggedField || draggedField === targetFieldName) return;
+
+    const newOrder = [...orderedMetadataFields];
+    const draggedIndex = newOrder.findIndex(field => field.csvColumnName === draggedField);
+    const targetIndex = newOrder.findIndex(field => field.csvColumnName === targetFieldName);
+
+    if (draggedIndex !== -1 && targetIndex !== -1) {
+      const draggedFieldData = newOrder[draggedIndex];
+      newOrder.splice(draggedIndex, 1);
+      newOrder.splice(targetIndex, 0, draggedFieldData);
+      setOrderedMetadataFields(newOrder);
+    }
+
+    setDraggedField(null);
+  };
+
+  // Field editing handlers
+  const handleEditField = (fieldName: string) => {
+    setEditingField(fieldName);
+  };
+
+  const handleSaveField = (fieldName: string, newValue: string) => {
+    setMetadata(prev => ({
+      ...prev,
+      [fieldName]: newValue
+    }));
+    setEditingField(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingField(null);
+  };
+
+  // Text expansion handlers
+  const toggleTextExpansion = (fieldName: string) => {
+    setExpandedTextFields(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(fieldName)) {
+        newSet.delete(fieldName);
+      } else {
+        newSet.add(fieldName);
+      }
+      return newSet;
+    });
+  };
+
+  // Image overlay handlers
+  const openImageOverlay = (imageUrls: string[], startIndex: number = 0) => {
+    setImageOverlay({
+      isOpen: true,
+      imageUrl: imageUrls[startIndex] || '',
+      imageUrls,
+      currentIndex: startIndex,
+    });
+  };
+
+  const closeImageOverlay = () => {
+    setImageOverlay({
+      isOpen: false,
+      imageUrl: '',
+      imageUrls: [],
+      currentIndex: 0,
+    });
+  };
+
+  const navigateImage = (direction: 'prev' | 'next') => {
+    const { imageUrls, currentIndex } = imageOverlay;
+    let newIndex = currentIndex;
+    
+    if (direction === 'prev' && currentIndex > 0) {
+      newIndex = currentIndex - 1;
+    } else if (direction === 'next' && currentIndex < imageUrls.length - 1) {
+      newIndex = currentIndex + 1;
+    }
+
+    setImageOverlay(prev => ({
+      ...prev,
+      currentIndex: newIndex,
+      imageUrl: imageUrls[newIndex] || '',
+    }));
+  };
+
+  // Audio overlay handlers
+  const openAudioOverlay = (audioUrl: string) => {
+    setAudioOverlay({
+      isOpen: true,
+      audioUrl,
+    });
+  };
+
+  const closeAudioOverlay = () => {
+    setAudioOverlay({
+      isOpen: false,
+      audioUrl: '',
+    });
+  };
+
+  // New column data handlers
+  const handleNewColumnChange = (fieldName: string, value: string) => {
+    setNewColumnData(prev => ({
+      ...prev,
+      [fieldName]: value,
+    }));
+  };
+
+  const annotatedTasks = tasks.filter(
     (task) => task.status === 'completed',
   );
-  const unannotatedTasks = filteredTasks.filter(
+  const unannotatedTasks = tasks.filter(
     (task) => task.status !== 'completed',
   );
 
@@ -704,315 +802,94 @@ export function AnnotationWorkbench({
     }
   };
 
-  const renderAnnotationTool = () => {
-    if (!currentTask || !annotationConfig) return null;
-
-    const fileType = getFileTypeForTask(currentTask);
-    const annotationFields = getAnnotationFields();
-
-    // Get content from metadata based on field type
-    const getContent = () => {
-      if (fileType === 'text') {
-        // For text, get the first text field content
-        const textField = annotationFields.find(
-          (field) => field.fieldType === 'text',
-        );
-        if (textField && currentTask.metadata) {
-          return (
-            currentTask.metadata[textField.csvColumnName] ||
-            'No text content available'
-          );
-        }
-        return 'No text content available';
-      }
-      return '';
-    };
-
-    const getImageUrl = () => {
-      if (fileType === 'image') {
-        const imageField = annotationFields.find(
-          (field) => field.fieldType === 'image',
-        );
-        if (imageField && currentTask.metadata) {
-          const imageData =
-            currentTask.metadata[imageField.csvColumnName] || '';
-
-          // Also check for related fields that might contain additional image URLs
-          const relatedFields = [
-            'text',
-            'hyperlink',
-            'url',
-            'image_url',
-            'imageUrl',
-          ];
-          let allImageUrls: string[] = [];
-
-          // Get URLs from the main image field
-          if (typeof imageData === 'string' && imageData.trim()) {
-            const urls = imageData
-              .split(/[,\n]/) // Handle both comma and newline separators
-              .map((url) => url.trim())
-              .filter((url) => url && url.startsWith('http'));
-            allImageUrls.push(...urls);
-          }
-
-          // Get URLs from related fields
-          relatedFields.forEach((fieldName) => {
-            if (
-              fieldName !== imageField.csvColumnName &&
-              currentTask.metadata &&
-              currentTask.metadata[fieldName]
-            ) {
-              const fieldData = currentTask.metadata[fieldName];
-              if (typeof fieldData === 'string' && fieldData.trim()) {
-                const urls = fieldData
-                  .split(/[,\n]/) // Handle both comma and newline separators
-                  .map((url) => url.trim())
-                  .filter((url) => url && url.startsWith('http'));
-                allImageUrls.push(...urls);
-              }
-            }
-          });
-
-          // Remove duplicates and filter out invalid URLs
-          const uniqueUrls = [...new Set(allImageUrls)].filter(
-            (url) =>
-              url &&
-              url !== '[object Object]' &&
-              (url.startsWith('http') || url.startsWith('https')),
-          );
-
-          console.log('Combined image URLs:', uniqueUrls);
-          console.log('Image field:', imageField.csvColumnName);
-          console.log(
-            'All metadata fields:',
-            Object.keys(currentTask.metadata || {}),
-          );
-          console.log('Text field data:', currentTask.metadata?.text);
-          console.log('Hyperlink field data:', currentTask.metadata?.hyperlink);
-          console.log('Raw URLs before cleaning:', allImageUrls);
-          console.log('URLs after cleaning:', uniqueUrls);
-          return uniqueUrls.join('\n');
+  // Helper function to extract image URLs from field data
+  const extractImageUrls = (fieldData: any): string[] => {
+    if (!fieldData) return [];
+    
+    let urls: string[] = [];
+    
+    if (typeof fieldData === 'string') {
+      urls = fieldData
+        .split(/[,\n]/)
+        .map(url => url.trim())
+        .filter(url => url && url.startsWith('http'));
+    } else if (Array.isArray(fieldData)) {
+      urls = fieldData
+        .filter(item => typeof item === 'string' && item.startsWith('http'));
+    } else if (typeof fieldData === 'object') {
+      const urlKeys = ['url', 'href', 'src', 'link', 'value'];
+      for (const key of urlKeys) {
+        if (fieldData[key] && typeof fieldData[key] === 'string' && fieldData[key].startsWith('http')) {
+          urls.push(fieldData[key]);
         }
       }
-      return '';
-    };
-
-    const getAudioUrl = () => {
-      if (fileType === 'audio') {
-        const audioField = annotationFields.find(
-          (field) => field.fieldType === 'audio',
-        );
-        if (audioField && currentTask.metadata) {
-          return currentTask.metadata[audioField.csvColumnName] || '';
-        }
-      }
-      return '';
-    };
-
-    // Get available labels from annotation config
-    const labels: string[] =
-      annotationConfig?.annotationLabels?.map((label) => label.name) || [];
-
-    // Render annotation tools based on field types
-    const textFields = annotationFields.filter(
-      (field) => field.fieldType === 'text',
-    );
-    const imageFields = annotationFields.filter(
-      (field) => field.fieldType === 'image',
-    );
-    const audioFields = annotationFields.filter(
-      (field) => field.fieldType === 'audio',
-    );
-
-    // Find the selected field
-    const selectedField = annotationFields.find(
-      (field) => field.csvColumnName === selectedFieldId,
-    );
-
-    // Auto-select the single annotation field
-    if (!selectedField && annotationFields.length > 0) {
-      const firstField = annotationFields[0];
-      setSelectedFieldId(firstField.csvColumnName);
-      return null; // Will re-render with selected field
     }
-
-    if (!selectedField) {
-      return (
-        <div className="p-6">
-          <div className="text-center text-gray-500">
-            <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-6">
-              <span className="text-4xl text-gray-400">📝</span>
-            </div>
-            <h3 className="text-xl font-medium mb-2">
-              No Annotation Fields Available
-            </h3>
-            <p className="text-sm">
-              Please configure annotation fields in the field configuration.
-            </p>
-          </div>
-        </div>
-      );
-    }
-
-    // Render only the selected annotation field
-    const fieldAnnotations = annotations.filter(
-      (ann) => ann.fieldName === selectedField.fieldName,
-    );
-
-    return (
-      <div className="h-full">
-        <div
-          key={selectedField.csvColumnName}
-          id={`annotation-field-${selectedField.csvColumnName}`}
-          className="h-full"
-        >
-          {/* Text Annotation Tool */}
-          {selectedField.fieldType === 'text' && (
-            <TextAnnotationTool
-              content={
-                currentTask.metadata?.[selectedField.csvColumnName] ||
-                'No text content available'
-              }
-              annotations={fieldAnnotations.map((ann) => ({
-                id: ann._id || '',
-                start: ann.data.start || 0,
-                end: ann.data.end || 0,
-                text: ann.data.text || '',
-                label: ann.label,
-              }))}
-              labels={labels}
-              annotationLabels={annotationConfig?.annotationLabels || []}
-              selectedLabel={selectedLabel}
-              onAnnotationChange={(newAnnotations) => {
-                const updatedAnnotations = newAnnotations.map((ann) => ({
-                  _id: ann.id,
-                  csvImportId,
-                  userId: user?._id || '',
-                  csvRowIndex: currentTask.rowIndex,
-                  fieldName: selectedField.fieldName,
-                  type: 'TEXT_NER' as any,
-                  label: ann.label,
-                  data: { start: ann.start, end: ann.end, text: ann.text },
-                  isAiGenerated: false,
-                  metadata: {},
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                }));
-
-                setAnnotations((prev) => [
-                  ...prev.filter(
-                    (a) => a.fieldName !== selectedField.fieldName,
-                  ),
-                  ...updatedAnnotations,
-                ]);
-              }}
-              disabled={false}
-            />
-          )}
-
-          {/* Image Annotation Tool */}
-          {selectedField.fieldType === 'image' && (
-            <ImageAnnotationTool
-              imageUrl={
-                currentTask.metadata?.[selectedField.csvColumnName] || ''
-              }
-              annotations={fieldAnnotations.map((ann) => ({
-                id: ann._id || '',
-                x: ann.data.x || 0,
-                y: ann.data.y || 0,
-                width: ann.data.width || 0,
-                height: ann.data.height || 0,
-                label: ann.label,
-                imageUrl: ann.data.imageUrl || '', // Add imageUrl from annotation data
-              }))}
-              labels={labels}
-              annotationLabels={annotationConfig?.annotationLabels || []}
-              selectedLabel={selectedLabel}
-              columnName={selectedField.csvColumnName}
-              onAnnotationChange={(newAnnotations) => {
-                const updatedAnnotations = newAnnotations.map((ann) => ({
-                  _id: ann.id,
-                  csvImportId,
-                  userId: user?._id || '',
-                  csvRowIndex: currentTask.rowIndex,
-                  fieldName: selectedField.fieldName,
-                  type: 'BBOX' as any,
-                  label: ann.label,
-                  data: {
-                    x: ann.x,
-                    y: ann.y,
-                    width: ann.width,
-                    height: ann.height,
-                    imageUrl: ann.imageUrl, // Include imageUrl in annotation data
-                  },
-                  isAiGenerated: false,
-                  metadata: {},
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                }));
-
-                setAnnotations((prev) => [
-                  ...prev.filter(
-                    (a) => a.fieldName !== selectedField.fieldName,
-                  ),
-                  ...updatedAnnotations,
-                ]);
-              }}
-              disabled={false}
-            />
-          )}
-
-          {/* Audio Annotation Tool */}
-          {selectedField.fieldType === 'audio' && (
-            <AudioAnnotationTool
-              audioUrl={
-                currentTask.metadata?.[selectedField.csvColumnName] || ''
-              }
-              annotations={fieldAnnotations.map((ann) => ({
-                id: ann._id || '',
-                startTime: ann.data.startTime || 0,
-                endTime: ann.data.endTime || 0,
-                transcription: ann.data.transcription || '',
-                label: ann.label,
-              }))}
-              labels={labels}
-              annotationLabels={annotationConfig?.annotationLabels || []}
-              selectedLabel={selectedLabel}
-              onAnnotationChange={(newAnnotations) => {
-                const updatedAnnotations = newAnnotations.map((ann) => ({
-                  _id: ann.id,
-                  csvImportId,
-                  userId: user?._id || '',
-                  csvRowIndex: currentTask.rowIndex,
-                  fieldName: selectedField.fieldName,
-                  type: 'AUDIO_TRANSCRIPTION' as any,
-                  label: ann.label,
-                  data: {
-                    startTime: ann.startTime,
-                    endTime: ann.endTime,
-                    transcription: ann.transcription,
-                  },
-                  isAiGenerated: false,
-                  metadata: {},
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                }));
-
-                setAnnotations((prev) => [
-                  ...prev.filter(
-                    (a) => a.fieldName !== selectedField.fieldName,
-                  ),
-                  ...updatedAnnotations,
-                ]);
-              }}
-              disabled={false}
-            />
-          )}
-        </div>
-      </div>
-    );
+    
+    return [...new Set(urls)].filter(url => url && url !== '[object Object]');
   };
+
+  // Helper function to format text content for display
+  const formatTextContent = (content: any, fieldName: string): string => {
+    if (!content) return 'N/A';
+    
+    let text = '';
+    if (typeof content === 'string') {
+      text = content;
+    } else if (typeof content === 'object') {
+      if (Array.isArray(content)) {
+        text = content.join('\n');
+      } else {
+        const urlKeys = ['url', 'href', 'src', 'link', 'value'];
+        for (const key of urlKeys) {
+          if (content[key] && typeof content[key] === 'string') {
+            text = content[key];
+            break;
+          }
+        }
+        if (!text) {
+          text = JSON.stringify(content, null, 2);
+        }
+      }
+    } else {
+      text = String(content);
+    }
+    
+    return text;
+  };
+
+  // Load new column data when task changes
+  useEffect(() => {
+    if (!currentTask || !annotationConfig) return;
+
+    const annotationFields = annotationConfig.annotationFields.filter(
+      (field) => field.isNewColumn || field.isAnnotationField
+    );
+
+    // Load existing annotations for this row
+    const loadRowData = async () => {
+      try {
+        const rowAnnotations = await AnnotationsAPI.findByCSVRow(
+          csvImportId,
+          currentTask.rowIndex,
+        );
+
+        const newColumnData: NewColumnData = {};
+        annotationFields.forEach((field) => {
+          const fieldAnnotation = rowAnnotations.find(
+            (ann) => ann.fieldName === field.fieldName
+          );
+          newColumnData[field.fieldName] = fieldAnnotation?.data?.value || '';
+        });
+
+        setNewColumnData(newColumnData);
+        setAnnotations(rowAnnotations);
+      } catch (err) {
+        console.error('Error loading row data:', err);
+      }
+    };
+
+    loadRowData();
+  }, [currentTask, csvImportId, annotationConfig]);
 
   if (loading) {
     return (
@@ -1037,506 +914,308 @@ export function AnnotationWorkbench({
   }
 
   return (
-    <div className="flex h-full bg-gray-50">
-      {/* Column 1: File Grid with Two Sections */}
-      <div
-        className={cn(
-          'bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out',
-          csvRowsCollapsed ? 'w-16' : 'w-96',
-        )}
-      >
+    <div className="flex flex-col h-full bg-gray-50">
+      {/* Main Content Area */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Panel: Metadata Display */}
+        <div className="w-1/2 border-r border-gray-200 bg-white flex flex-col">
         <div className="p-4 border-b border-gray-100">
-          <div className="flex items-center justify-between">
-            <h2
-              className={cn(
-                'font-semibold text-gray-900 transition-opacity duration-200',
-                csvRowsCollapsed
-                  ? 'opacity-0 w-0 overflow-hidden'
-                  : 'opacity-100',
-              )}
-            >
-              CSV Rows
+            <h2 className="text-lg font-semibold text-gray-900">
+              Metadata - Row {currentTask?.rowIndex || 'N/A'}
             </h2>
-            <button
-              onClick={() => setCsvRowsCollapsed(!csvRowsCollapsed)}
-              className="p-1 rounded-md hover:bg-gray-100 transition-colors"
-              title={
-                csvRowsCollapsed
-                  ? 'Expand CSV Rows (Ctrl+H)'
-                  : 'Collapse CSV Rows (Ctrl+H)'
-              }
-            >
-              {csvRowsCollapsed ? (
-                <ChevronRight className="h-4 w-4 text-gray-600" />
-              ) : (
-                <ChevronLeft className="h-4 w-4 text-gray-600" />
-              )}
-            </button>
+            <p className="text-sm text-gray-500 mt-1">
+              Drag fields to reorder • Click edit to modify content
+            </p>
           </div>
 
-          {/* Search and Filter */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {orderedMetadataFields.map((field) => (
           <div
+                key={field.csvColumnName}
+                draggable
+                onDragStart={(e) => handleDragStart(e, field.csvColumnName)}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, field.csvColumnName)}
             className={cn(
-              'space-y-2 transition-all duration-200',
-              csvRowsCollapsed
-                ? 'opacity-0 h-0 overflow-hidden'
-                : 'opacity-100',
-            )}
-          >
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search rows..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 h-8"
-              />
-            </div>
-
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full h-8 px-3 border border-gray-300 rounded-md text-sm"
-            >
-              <option value="all">All Rows</option>
-              <option value="pending">Unannotated</option>
-              <option value="in_progress">In Progress</option>
-              <option value="completed">Annotated</option>
-            </select>
-          </div>
-        </div>
-
-        {/* File Grid with Two Columns */}
-        <div
-          className={cn(
-            'flex-1 overflow-y-auto transition-all duration-200',
-            csvRowsCollapsed ? 'opacity-0 overflow-hidden' : 'opacity-100',
-          )}
-        >
-          {/* Collapsed State Indicator */}
-          {csvRowsCollapsed && (
-            <div className="flex flex-col items-center justify-center h-full p-2">
-              <div className="text-center text-gray-500">
-                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-2">
-                  <span className="text-lg">📊</span>
-                </div>
-                <p className="text-xs font-medium">CSV Rows</p>
-                <p className="text-xs text-gray-400 mt-1">
-                  {filteredTasks.length} row
-                  {filteredTasks.length !== 1 ? 's' : ''}
-                </p>
-                <p className="text-xs text-gray-400">
-                  {unannotatedTasks.length} unannotated
-                </p>
-                <p className="text-xs text-gray-400">
-                  {annotatedTasks.length} annotated
-                </p>
-
-                {/* Current Task Indicator */}
-                {currentTask && (
-                  <div className="mt-3 p-2 bg-blue-50 rounded border border-blue-200">
-                    <p className="text-xs font-medium text-blue-700">
-                      Current: Row {currentTask.rowIndex}
-                    </p>
-                    <div className="flex items-center justify-center mt-1">
-                      {getFileIcon(getFileTypeForTask(currentTask))}
-                    </div>
-                  </div>
+                  'p-4 border border-gray-200 rounded-lg bg-gray-50 transition-all',
+                  draggedField === field.csvColumnName && 'opacity-50',
+                  'hover:shadow-md cursor-move'
                 )}
-              </div>
-            </div>
-          )}
-
-          {/* Unannotated Files Section */}
-          <div className="p-4 border-b border-gray-100">
-            <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-              <div className="w-2 h-2 bg-red-400 rounded-full mr-2"></div>
-              Unannotated ({unannotatedTasks.length})
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              {unannotatedTasks.length === 0 ? (
-                <div className="col-span-2 text-center text-gray-400 py-4">
-                  <p className="text-xs">No unannotated rows</p>
-                </div>
-              ) : (
-                unannotatedTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    onClick={() => setCurrentTaskIndex(tasks.indexOf(task))}
-                    className={cn(
-                      'p-3 rounded-lg border cursor-pointer transition-all hover:shadow-md',
-                      currentTask?.id === task.id
-                        ? 'border-blue-500 bg-blue-50 shadow-md'
-                        : 'border-gray-200 bg-white hover:border-gray-300',
-                    )}
-                  >
-                    <div className="flex flex-col items-center text-center space-y-2">
-                      <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center">
-                        {getFileIcon(getFileTypeForTask(task))}
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium text-gray-900 truncate">
-                          Row {task.rowIndex}
-                        </p>
-                        <div className="flex items-center justify-center mt-1">
-                          {getStatusIcon(task.status)}
-                          <span className="text-xs text-gray-500 ml-1 capitalize">
-                            {task.status === 'pending'
-                              ? 'Unannotated'
-                              : task.status === 'in_progress'
-                              ? 'In Progress'
-                              : task.status}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Annotated Files Section */}
-          <div className="p-4">
-            <h3 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-              <div className="w-2 h-2 bg-green-400 rounded-full mr-2"></div>
-              Annotated ({annotatedTasks.length})
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              {annotatedTasks.length === 0 ? (
-                <div className="col-span-2 text-center text-gray-400 py-4">
-                  <p className="text-xs">No annotated rows</p>
-                </div>
-              ) : (
-                annotatedTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    onClick={() => setCurrentTaskIndex(tasks.indexOf(task))}
-                    className={cn(
-                      'p-3 rounded-lg border cursor-pointer transition-all hover:shadow-md',
-                      currentTask?.id === task.id
-                        ? 'border-blue-500 bg-blue-50 shadow-md'
-                        : 'border-green-200 bg-green-50 hover:border-green-300',
-                    )}
-                  >
-                    <div className="flex flex-col items-center text-center space-y-2">
-                      <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
-                        {getFileIcon(getFileTypeForTask(task))}
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium text-gray-900 truncate">
-                          Row {task.rowIndex}
-                        </p>
-                        <div className="flex items-center justify-center mt-1">
-                          {getStatusIcon(task.status)}
-                          <span className="text-xs text-green-600 font-medium">
-                            Annotated
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* File Count */}
-        <div
-          className={cn(
-            'p-3 border-t border-gray-100 transition-all duration-200',
-            csvRowsCollapsed ? 'opacity-0 overflow-hidden' : 'opacity-100',
-          )}
-        >
-          <div className="text-center">
-            <span className="text-sm text-gray-600">
-              {filteredTasks.length} row{filteredTasks.length !== 1 ? 's' : ''}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Column 2: Annotation Interface or File Info */}
-      <div className="flex-1 bg-white">
-        {currentTask ? (
-          // Show three-column annotation interface when file is selected
-          <div className="flex h-full">
-            {/* Metadata Panel */}
-            <div className="w-80 border-r border-gray-200 flex flex-col">
-              <div className="p-4 border-b border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900 mb-3">
-                  Metadata
-                </h2>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {getMetadataFields().map((field) => (
-                  <div key={field.csvColumnName} className="space-y-2">
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <GripVertical className="h-4 w-4 text-gray-400" />
                     <Label className="text-sm font-medium text-gray-700">
                       {field.fieldName}
                       {field.isRequired && (
                         <span className="text-red-500 ml-1">*</span>
                       )}
                     </Label>
+            </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEditField(field.csvColumnName)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <Edit3 className="h-3 w-3" />
+                  </Button>
+        </div>
 
-                    {/* Display metadata fields as structured text with preserved formatting */}
-                    <div className="mt-1 p-2 border border-gray-200 rounded-md bg-gray-50 text-gray-800 text-sm whitespace-pre-wrap">
-                      {(() => {
-                        const value = metadata[field.csvColumnName];
-                        if (!value) return 'N/A';
-
-                        // If it's a string with newlines, preserve them
-                        if (typeof value === 'string' && value.includes('\n')) {
-                          return value;
-                        }
-
-                        // If it's an object, try to format it nicely
-                        if (typeof value === 'object' && value !== null) {
-                          if (Array.isArray(value)) {
-                            return value.join('\n');
-                          }
-                          // Try to extract URL-like properties
-                          const urlKeys = [
-                            'url',
-                            'href',
-                            'src',
-                            'link',
-                            'value',
-                          ];
-                          for (const key of urlKeys) {
-                            if (value[key] && typeof value[key] === 'string') {
-                              return value[key];
-                            }
-                          }
-                          return JSON.stringify(value, null, 2);
-                        }
-
-                        return String(value);
-                      })()}
+                {/* Field Content Display */}
+                <div className="space-y-2">
+                  {editingField === field.csvColumnName ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        value={metadata[field.csvColumnName] || ''}
+                        onChange={(e) => setMetadata(prev => ({
+                          ...prev,
+                          [field.csvColumnName]: e.target.value
+                        }))}
+                        className="min-h-[100px]"
+                        placeholder="Enter content..."
+                      />
+                      <div className="flex space-x-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleSaveField(field.csvColumnName, metadata[field.csvColumnName] || '')}
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleCancelEdit}
+                        >
+                          Cancel
+                        </Button>
+                </div>
                     </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {/* Text Fields */}
+                      {field.fieldType === 'text' && (
+                        <div className="p-3 border border-gray-200 rounded-md bg-white">
+                          <div className="text-sm text-gray-800 whitespace-pre-wrap">
+                            {(() => {
+                              const text = formatTextContent(metadata[field.csvColumnName], field.csvColumnName);
+                              const isExpanded = expandedTextFields.has(field.csvColumnName);
+                              const lines = text.split('\n');
+                              const shouldTruncate = lines.length > 3 && !isExpanded;
+                              
+                              return (
+                                <>
+                                  {shouldTruncate ? lines.slice(0, 3).join('\n') : text}
+                                  {lines.length > 3 && (
+                                    <button
+                                      onClick={() => toggleTextExpansion(field.csvColumnName)}
+                                      className="text-blue-600 hover:text-blue-800 text-xs ml-2"
+                                    >
+                                      {isExpanded ? 'See Less' : 'See More'}
+                                    </button>
+                                  )}
+                                </>
+                              );
+                            })()}
+              </div>
+            </div>
+          )}
+
+                      {/* Image Fields */}
+                      {field.fieldType === 'image' && (
+                        <div className="space-y-2">
+                          {(() => {
+                            const imageUrls = extractImageUrls(metadata[field.csvColumnName]);
+                            return imageUrls.length > 0 ? (
+                              <div className="grid grid-cols-2 gap-2">
+                                {imageUrls.slice(0, 4).map((url, index) => (
+                                  <div
+                                    key={index}
+                                    className="relative group cursor-pointer"
+                                    onClick={() => openImageOverlay(imageUrls, index)}
+                                  >
+                                    <img
+                                      src={url}
+                                      alt={`Image ${index + 1}`}
+                                      className="w-full h-20 object-cover rounded border border-gray-200"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = 'none';
+                                      }}
+                                    />
+                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded flex items-center justify-center">
+                                      <Eye className="h-4 w-4 text-white opacity-0 group-hover:opacity-100" />
+                      </div>
+                        </div>
+                                ))}
+                                {imageUrls.length > 4 && (
+                                  <div className="flex items-center justify-center h-20 bg-gray-100 rounded border border-gray-200 text-xs text-gray-500">
+                                    +{imageUrls.length - 4} more
+                      </div>
+              )}
+            </div>
+                            ) : (
+                              <div className="p-3 border border-gray-200 rounded-md bg-white text-sm text-gray-500 text-center">
+                                No images found
+          </div>
+                            );
+                          })()}
+                </div>
+                      )}
+
+                      {/* Audio Fields */}
+                      {field.fieldType === 'audio' && (
+                        <div className="p-3 border border-gray-200 rounded-md bg-white">
+                          {(() => {
+                            const audioUrl = metadata[field.csvColumnName];
+                            return audioUrl ? (
+                              <div className="flex items-center space-x-3">
+                                <Button
+                                  size="sm"
+                                  onClick={() => openAudioOverlay(audioUrl)}
+                                  className="bg-blue-600 hover:bg-blue-700"
+                                >
+                                  <Volume2 className="h-4 w-4 mr-2" />
+                                  Play Audio
+                                </Button>
+                                <span className="text-sm text-gray-600 truncate">
+                                  {audioUrl}
+                          </span>
+                        </div>
+                            ) : (
+                              <div className="text-sm text-gray-500 text-center">
+                                No audio found
+                      </div>
+                            );
+                          })()}
+                    </div>
+                      )}
+
+                      {/* Default display for other field types */}
+                      {!['text', 'image', 'audio'].includes(field.fieldType) && (
+                        <div className="p-3 border border-gray-200 rounded-md bg-white text-sm text-gray-800 whitespace-pre-wrap">
+                          {formatTextContent(metadata[field.csvColumnName], field.csvColumnName)}
                   </div>
-                ))}
+              )}
+            </div>
+                  )}
+          </div>
+        </div>
+            ))}
+
+            {orderedMetadataFields.length === 0 && (
+              <div className="text-center text-gray-500 py-8">
+                <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <span className="text-2xl text-gray-400">📋</span>
+          </div>
+                <h3 className="text-lg font-medium mb-2">No Metadata Fields</h3>
+                <p className="text-sm">
+                  Configure metadata fields in the field configuration to see them here.
+                </p>
+              </div>
+            )}
+        </div>
+      </div>
+
+        {/* Right Panel: New Column Data Entry */}
+        <NewColumnDataPanel
+          annotationConfig={annotationConfig}
+          newColumnData={newColumnData}
+          onNewColumnChange={handleNewColumnChange}
+          onSaveProgress={saveProgress}
+          onUndo={undo}
+          onRedo={redo}
+          onExportCSV={exportAnnotationsToCSV}
+          historyIndex={historyIndex}
+          historyLength={history.length}
+          autoSaveEnabled={autoSaveEnabled}
+          isSaving={isSaving}
+          lastSavedTime={lastSavedTime}
+        />
               </div>
 
-              {/* Save Controls */}
-              <div className="p-4 border-t border-gray-100">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-2">
+      {/* Fixed Footer: Row Navigation */}
+      <RowFooter
+        tasks={tasks}
+        currentTaskIndex={currentTaskIndex}
+        onNavigateTask={navigateTask}
+        onJumpToRow={jumpToRow}
+      />
+
+      {/* Image Overlay */}
+      {imageOverlay.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="relative max-w-4xl max-h-full">
+            <button
+              onClick={closeImageOverlay}
+              className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
+            >
+              <X className="h-6 w-6" />
+            </button>
+            
+            <img
+              src={imageOverlay.imageUrl}
+              alt="Full size"
+              className="max-w-full max-h-full object-contain"
+            />
+            
+            {imageOverlay.imageUrls.length > 1 && (
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={undo}
-                      disabled={historyIndex <= 0}
+                  onClick={() => navigateImage('prev')}
+                  disabled={imageOverlay.currentIndex === 0}
+                  className="bg-white"
                     >
-                      <Undo className="h-4 w-4" />
+                  <ChevronLeft className="h-4 w-4" />
                     </Button>
+                <span className="px-3 py-1 bg-white rounded text-sm">
+                  {imageOverlay.currentIndex + 1} / {imageOverlay.imageUrls.length}
+                </span>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={redo}
-                      disabled={historyIndex >= history.length - 1}
+                  onClick={() => navigateImage('next')}
+                  disabled={imageOverlay.currentIndex === imageOverlay.imageUrls.length - 1}
+                  className="bg-white"
                     >
-                      <Redo className="h-4 w-4" />
+                  <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
-
-                  <div className="flex items-center justify-center">
-                    <Button
-                      size="sm"
-                      onClick={saveProgress}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      <Save className="h-4 w-4 mr-2" />
-                      Save All Annotations
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                  <span>Auto-save: {autoSaveEnabled ? 'On' : 'Off'}</span>
-                  <div className="flex items-center space-x-2">
-                    {isSaving ? (
-                      <div className="flex items-center space-x-1 text-blue-600">
-                        <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                        <span>Saving...</span>
-                      </div>
-                    ) : lastSavedTime ? (
-                      <span className="text-green-600">
-                        Last saved: {lastSavedTime.toLocaleTimeString()}
-                      </span>
-                    ) : (
-                      <span>Not saved yet</span>
                     )}
                   </div>
                 </div>
-
-                {/* Export CSV Button - Separate Section */}
-                <div className="pt-2 border-t border-gray-100">
-                  <Button
-                    size="sm"
-                    onClick={exportAnnotationsToCSV}
-                    disabled={annotations.length === 0}
-                    variant="outline"
-                    className="w-full border-green-600 text-green-600 hover:bg-green-50"
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Export CSV
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Annotation Tools */}
-            <div className="flex-1 flex flex-col">
-              <div className="p-4 border-b border-gray-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">
-                    Annotating: Row {currentTask.rowIndex}
-                  </h2>
-
-                  <div className="flex items-center space-x-3">
-                    <span
-                      className={cn(
-                        'px-2 py-1 text-xs rounded-full',
-                        currentTask.status === 'completed' &&
-                          'bg-green-100 text-green-800',
-                        currentTask.status === 'in_progress' &&
-                          'bg-blue-100 text-blue-800',
-                        currentTask.status === 'pending' &&
-                          'bg-gray-100 text-gray-800',
-                        currentTask.status === 'needs_review' &&
-                          'bg-orange-100 text-orange-800',
                       )}
-                    >
-                      {currentTask.status.replace('_', ' ')}
-                    </span>
 
-                    {/* Labels Menu - Moved beside status */}
-                    <div className="relative">
+      {/* Audio Overlay */}
+      {audioOverlay.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Audio Player</h3>
                       <button
-                        onClick={() => setShowLabelsModal(!showLabelsModal)}
-                        className="flex items-center space-x-2 px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-md transition-colors text-sm font-medium"
-                        title="Select annotation label"
+                onClick={closeAudioOverlay}
+                className="text-gray-400 hover:text-gray-600"
                       >
-                        <Tag className="h-4 w-4" />
-                        <span>Label</span>
-                        <span className="text-blue-600">⋮</span>
-                      </button>
-
-                      {/* Labels Modal */}
-                      {showLabelsModal && (
-                        <div
-                          ref={labelsModalRef}
-                          className="absolute right-0 top-full mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50"
-                        >
-                          <div className="p-4">
-                            <div className="flex items-center justify-between mb-3">
-                              <h3 className="text-sm font-medium text-gray-900">
-                                Available Labels
-                              </h3>
-                              <button
-                                onClick={() => setShowLabelsModal(false)}
-                                className="text-gray-400 hover:text-gray-600 transition-colors"
-                              >
-                                <span className="text-lg">×</span>
+                <X className="h-6 w-6" />
                               </button>
                             </div>
 
-                            <div className="space-y-2">
-                              {annotationConfig?.annotationLabels?.map(
-                                (label, index) => (
-                                  <div
-                                    key={index}
-                                    className="flex items-center justify-between p-2 border border-gray-200 rounded-md hover:bg-gray-50 cursor-pointer"
-                                    onClick={() => {
-                                      setSelectedLabel(label.name);
-                                      setShowLabelsModal(false);
-                                    }}
-                                  >
-                                    <div className="flex items-center space-x-3">
-                                      <div
-                                        className="w-4 h-4 rounded-full border border-gray-300"
-                                        style={{
-                                          backgroundColor: label.color,
-                                        }}
-                                      ></div>
-                                      <div>
-                                        <p className="text-sm font-medium text-gray-900">
-                                          {label.name}
-                                        </p>
-                                        {label.description && (
-                                          <p className="text-xs text-gray-500">
-                                            {label.description}
-                                          </p>
-                                        )}
-                                      </div>
-                                    </div>
-                                    {label.hotkey && (
-                                      <div className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
-                                        {label.hotkey}
-                                      </div>
-                                    )}
-                                  </div>
-                                ),
-                              ) || []}
-                            </div>
-
-                            {(!annotationConfig?.annotationLabels ||
-                              annotationConfig.annotationLabels.length ===
-                                0) && (
-                              <div className="text-center py-4 text-gray-500 text-sm">
-                                No labels available. Please configure labels in
-                                the field configuration.
+            <audio
+              controls
+              className="w-full"
+              src={audioOverlay.audioUrl}
+            >
+              Your browser does not support the audio element.
+            </audio>
+            
+            <div className="mt-4 text-sm text-gray-600">
+              <p className="truncate">URL: {audioOverlay.audioUrl}</p>
                               </div>
-                            )}
                           </div>
                         </div>
                       )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Selected Label Display */}
-                {selectedLabel && (
-                  <div className="flex items-center justify-end mb-2">
-                    <div className="flex items-center space-x-2 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                      <span>Selected: {selectedLabel}</span>
-                      <button
-                        onClick={() => setSelectedLabel(null)}
-                        className="text-blue-600 hover:text-blue-800 transition-colors"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex-1 overflow-y-auto">
-                {renderAnnotationTool()}
-              </div>
-            </div>
-          </div>
-        ) : (
-          // Show welcome message when no file is selected
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center text-gray-500">
-              <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-6">
-                <span className="text-4xl text-gray-400">📝</span>
-              </div>
-              <h3 className="text-xl font-medium mb-2">
-                Select a row to start annotating
-              </h3>
-              <p className="text-sm">
-                Click on any row from the left panel to begin annotation
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

@@ -40,12 +40,14 @@ export interface AnnotationField {
   isAnnotationField: boolean;
   options?: string[];
   instructions?: string;
+  isNewColumn?: boolean; // true if this is a new column, not from CSV  
+  newColumnId?: string; // Reference to NewColumn if isNewColumn is true
 }
 
 export interface AnnotationConfig {
   _id: string;
   csvImportId: string;
-  userId: string;
+  userId?: string;
   annotationFields: AnnotationField[];
   annotationLabels?: any[]; // Add annotation labels
   rowAnnotations: any[];
