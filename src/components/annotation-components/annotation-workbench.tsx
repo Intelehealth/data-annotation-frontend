@@ -258,10 +258,10 @@ export function AnnotationWorkbench({
         console.log('Tasks created:', taskData.length, 'tasks');
         setTasks(taskData);
 
-        // Set the annotation field as selected by default
+        // Set the first non-metadata field as selected by default
         if (annotationConfig && annotationConfig.annotationFields.length > 0) {
           const annotationField = annotationConfig.annotationFields.find(
-            (field: any) => field.isAnnotationField === true,
+            (field: any) => !field.isMetadataField,
           );
           console.log(
             'Looking for annotation field in config:',
@@ -276,7 +276,7 @@ export function AnnotationWorkbench({
             setSelectedFieldId(annotationField.csvColumnName);
           } else {
             console.log(
-              'No annotation field found with isAnnotationField: true',
+              'No annotation field found (all fields are metadata)',
             );
           }
         }
@@ -352,11 +352,11 @@ export function AnnotationWorkbench({
     );
   };
 
-  // Get annotation fields (isAnnotationField: true)
+  // Get annotation fields (fields that are not metadata)
   const getAnnotationFields = (): AnnotationField[] => {
     if (!annotationConfig) return [];
     return annotationConfig.annotationFields.filter(
-      (field) => field.isAnnotationField,
+      (field) => !field.isMetadataField,
     );
   };
 
@@ -387,7 +387,7 @@ export function AnnotationWorkbench({
         const annotationFields = getAnnotationFields();
         annotationFields.forEach((field) => {
           const fieldAnnotations = rowAnnotations.filter(
-            (ann) => ann.fieldName === field.fieldName,
+            (ann) => ann.fieldName === field.fieldName && ann.type !== 'NEW_COLUMN_VALUE',
           );
 
           if (fieldAnnotations.length > 0) {
@@ -421,6 +421,16 @@ export function AnnotationWorkbench({
             const annotationColumnName = `${field.fieldName}_annotations`;
             exportedRow[annotationColumnName] = '';
           }
+        });
+
+        // Add new column values
+        const newColumnValues = rowAnnotations.filter(
+          (ann) => ann.type === 'NEW_COLUMN_VALUE',
+        );
+        
+        newColumnValues.forEach((newColumnValue) => {
+          // Use the fieldName as the column name (this is the new column name)
+          exportedRow[newColumnValue.fieldName] = newColumnValue.data.columnValue || '';
         });
 
         exportedRows.push(exportedRow);

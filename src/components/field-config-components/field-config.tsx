@@ -52,7 +52,6 @@ interface AnnotationField {
   fieldType: 'text' | 'image' | 'audio';
   isRequired: boolean;
   isMetadataField: boolean; // true if it's metadata, false if it needs annotation
-  isAnnotationField: boolean; // true if it needs to be annotated
   options?: string[];
   isNewColumn?: boolean; // true if this is a new column, not from CSV
   newColumnId?: string; // Reference to NewColumn if isNewColumn is true
@@ -184,15 +183,9 @@ export function FieldConfig({
           },
         );
 
-        // Validate and fix annotation field selection
-        const annotationFieldsCount = cleanFields.filter(
-          (f: AnnotationField) => f.isAnnotationField,
-        ).length;
-
-        // Set all fields as metadata by default
+        // Set all fields as metadata by default (no annotation field validation needed)
         cleanFields.forEach((field: AnnotationField) => {
           field.isMetadataField = true;
-          field.isAnnotationField = false;
         });
 
         setAnnotationFields(cleanFields);
@@ -234,10 +227,9 @@ export function FieldConfig({
       const newFields = currentFields.map((field) => {
         const newField = { ...field };
         if (field.id === selectedId) {
-          newField.isAnnotationField = true;
-          newField.isMetadataField = false;
+          newField.isMetadataField = false; // This field will be used for annotation
         } else {
-          newField.isAnnotationField = false;
+          newField.isMetadataField = true; // Other fields are metadata
         }
         return newField;
       });
@@ -253,9 +245,6 @@ export function FieldConfig({
         if (field.id === fieldId) {
           const newField = { ...field };
           newField.isMetadataField = isMetadata;
-          if (isMetadata) {
-            newField.isAnnotationField = false; // Mutual exclusivity
-          }
           return newField;
         }
         return { ...field };
@@ -294,7 +283,6 @@ export function FieldConfig({
       fieldType: 'text',
       isRequired: false,
       isMetadataField: false,
-      isAnnotationField: true,
       options: [],
       isNewColumn: true,
       newColumnId: newColumn.id,
@@ -332,7 +320,6 @@ export function FieldConfig({
       fieldType: 'text', // Default to text for new columns
       isRequired: newColumn.isRequired,
       isMetadataField: false, // Set as metadata by default
-      isAnnotationField: true,
       options: [],
       isNewColumn: true,
       newColumnId: newColumnId,
@@ -375,7 +362,6 @@ export function FieldConfig({
           fieldType: field.fieldType,
           isRequired: field.isRequired,
           isMetadataField: field.isMetadataField,
-          isAnnotationField: field.isAnnotationField,
           options: field.options,
           isNewColumn: field.isNewColumn,
           newColumnId: field.newColumnId,
@@ -472,7 +458,6 @@ export function FieldConfig({
         fieldType: 'text',
         isRequired: false,
         isMetadataField: true,
-        isAnnotationField: false,
         options: [],
       };
       

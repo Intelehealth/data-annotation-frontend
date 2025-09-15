@@ -11,7 +11,6 @@ export const fieldSelectionAPI = {
       fieldType: 'text' | 'image' | 'audio';
       isRequired: boolean;
       isMetadataField: boolean;
-      isAnnotationField: boolean;
       options?: string[];
       instructions?: string;
     }[];
@@ -65,7 +64,6 @@ export const fieldSelectionAPI = {
       fieldType: 'text' | 'image' | 'audio';
       isRequired: boolean;
       isMetadataField: boolean;
-      isAnnotationField: boolean;
       options?: string[];
       isNewColumn?: boolean;
       newColumnId?: string;
