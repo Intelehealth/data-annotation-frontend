@@ -7,17 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  ChevronLeft,
-  ChevronRight,
   AlertCircle,
   Image as ImageIcon,
   AudioLines,
   Loader2,
-  Edit3,
-  GripVertical,
-  Eye,
-  X,
-  Volume2,
   CheckCircle,
   Clock,
   FileText,
@@ -33,6 +26,8 @@ import {
 import { fieldSelectionAPI } from '@/lib/api/field-config';
 import { csvProcessingAPI } from '@/lib/api/csv-processing';
 import { RowFooter, NewColumnDataPanel } from '@/components/new-column-components';
+import { MetadataDisplay } from './metadata-display';
+import { ImageOverlay, AudioOverlay } from './media-overlays';
 
 interface Task {
   id: string;
@@ -802,60 +797,6 @@ export function AnnotationWorkbench({
     }
   };
 
-  // Helper function to extract image URLs from field data
-  const extractImageUrls = (fieldData: any): string[] => {
-    if (!fieldData) return [];
-    
-    let urls: string[] = [];
-    
-    if (typeof fieldData === 'string') {
-      urls = fieldData
-        .split(/[,\n]/)
-        .map(url => url.trim())
-        .filter(url => url && url.startsWith('http'));
-    } else if (Array.isArray(fieldData)) {
-      urls = fieldData
-        .filter(item => typeof item === 'string' && item.startsWith('http'));
-    } else if (typeof fieldData === 'object') {
-      const urlKeys = ['url', 'href', 'src', 'link', 'value'];
-      for (const key of urlKeys) {
-        if (fieldData[key] && typeof fieldData[key] === 'string' && fieldData[key].startsWith('http')) {
-          urls.push(fieldData[key]);
-        }
-      }
-    }
-    
-    return [...new Set(urls)].filter(url => url && url !== '[object Object]');
-  };
-
-  // Helper function to format text content for display
-  const formatTextContent = (content: any, fieldName: string): string => {
-    if (!content) return 'N/A';
-    
-    let text = '';
-    if (typeof content === 'string') {
-      text = content;
-    } else if (typeof content === 'object') {
-      if (Array.isArray(content)) {
-        text = content.join('\n');
-      } else {
-        const urlKeys = ['url', 'href', 'src', 'link', 'value'];
-        for (const key of urlKeys) {
-          if (content[key] && typeof content[key] === 'string') {
-            text = content[key];
-            break;
-          }
-        }
-        if (!text) {
-          text = JSON.stringify(content, null, 2);
-        }
-      }
-    } else {
-      text = String(content);
-    }
-    
-    return text;
-  };
 
   // Load new column data when task changes
   useEffect(() => {
@@ -918,204 +859,25 @@ export function AnnotationWorkbench({
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Panel: Metadata Display */}
-        <div className="w-1/2 border-r border-gray-200 bg-white flex flex-col">
-        <div className="p-4 border-b border-gray-100">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Metadata - Row {currentTask?.rowIndex || 'N/A'}
-            </h2>
-            <p className="text-sm text-gray-500 mt-1">
-              Drag fields to reorder • Click edit to modify content
-            </p>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {orderedMetadataFields.map((field) => (
-          <div
-                key={field.csvColumnName}
-                draggable
-                onDragStart={(e) => handleDragStart(e, field.csvColumnName)}
+        <MetadataDisplay
+          metadata={{ ...metadata, rowIndex: currentTask?.rowIndex }}
+          orderedMetadataFields={orderedMetadataFields}
+          draggedField={draggedField}
+          editingField={editingField}
+          expandedTextFields={expandedTextFields}
+          imageOverlay={imageOverlay}
+          audioOverlay={audioOverlay}
+          onMetadataChange={setMetadata}
+          onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, field.csvColumnName)}
-            className={cn(
-                  'p-4 border border-gray-200 rounded-lg bg-gray-50 transition-all',
-                  draggedField === field.csvColumnName && 'opacity-50',
-                  'hover:shadow-md cursor-move'
-                )}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center space-x-2">
-                    <GripVertical className="h-4 w-4 text-gray-400" />
-                    <Label className="text-sm font-medium text-gray-700">
-                      {field.fieldName}
-                      {field.isRequired && (
-                        <span className="text-red-500 ml-1">*</span>
-                      )}
-                    </Label>
-            </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleEditField(field.csvColumnName)}
-                    className="h-6 w-6 p-0"
-                  >
-                    <Edit3 className="h-3 w-3" />
-                  </Button>
-        </div>
-
-                {/* Field Content Display */}
-                <div className="space-y-2">
-                  {editingField === field.csvColumnName ? (
-                    <div className="space-y-2">
-                      <Textarea
-                        value={metadata[field.csvColumnName] || ''}
-                        onChange={(e) => setMetadata(prev => ({
-                          ...prev,
-                          [field.csvColumnName]: e.target.value
-                        }))}
-                        className="min-h-[100px]"
-                        placeholder="Enter content..."
-                      />
-                      <div className="flex space-x-2">
-                        <Button
-                          size="sm"
-                          onClick={() => handleSaveField(field.csvColumnName, metadata[field.csvColumnName] || '')}
-                          className="bg-blue-600 hover:bg-blue-700"
-                        >
-                          Save
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleCancelEdit}
-                        >
-                          Cancel
-                        </Button>
-                </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {/* Text Fields */}
-                      {field.fieldType === 'text' && (
-                        <div className="p-3 border border-gray-200 rounded-md bg-white">
-                          <div className="text-sm text-gray-800 whitespace-pre-wrap">
-                            {(() => {
-                              const text = formatTextContent(metadata[field.csvColumnName], field.csvColumnName);
-                              const isExpanded = expandedTextFields.has(field.csvColumnName);
-                              const lines = text.split('\n');
-                              const shouldTruncate = lines.length > 3 && !isExpanded;
-                              
-                              return (
-                                <>
-                                  {shouldTruncate ? lines.slice(0, 3).join('\n') : text}
-                                  {lines.length > 3 && (
-                                    <button
-                                      onClick={() => toggleTextExpansion(field.csvColumnName)}
-                                      className="text-blue-600 hover:text-blue-800 text-xs ml-2"
-                                    >
-                                      {isExpanded ? 'See Less' : 'See More'}
-                                    </button>
-                                  )}
-                                </>
-                              );
-                            })()}
-              </div>
-            </div>
-          )}
-
-                      {/* Image Fields */}
-                      {field.fieldType === 'image' && (
-                        <div className="space-y-2">
-                          {(() => {
-                            const imageUrls = extractImageUrls(metadata[field.csvColumnName]);
-                            return imageUrls.length > 0 ? (
-                              <div className="grid grid-cols-2 gap-2">
-                                {imageUrls.slice(0, 4).map((url, index) => (
-                                  <div
-                                    key={index}
-                                    className="relative group cursor-pointer"
-                                    onClick={() => openImageOverlay(imageUrls, index)}
-                                  >
-                                    <img
-                                      src={url}
-                                      alt={`Image ${index + 1}`}
-                                      className="w-full h-20 object-cover rounded border border-gray-200"
-                                      onError={(e) => {
-                                        e.currentTarget.style.display = 'none';
-                                      }}
-                                    />
-                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded flex items-center justify-center">
-                                      <Eye className="h-4 w-4 text-white opacity-0 group-hover:opacity-100" />
-                      </div>
-                        </div>
-                                ))}
-                                {imageUrls.length > 4 && (
-                                  <div className="flex items-center justify-center h-20 bg-gray-100 rounded border border-gray-200 text-xs text-gray-500">
-                                    +{imageUrls.length - 4} more
-                      </div>
-              )}
-            </div>
-                            ) : (
-                              <div className="p-3 border border-gray-200 rounded-md bg-white text-sm text-gray-500 text-center">
-                                No images found
-          </div>
-                            );
-                          })()}
-                </div>
-                      )}
-
-                      {/* Audio Fields */}
-                      {field.fieldType === 'audio' && (
-                        <div className="p-3 border border-gray-200 rounded-md bg-white">
-                          {(() => {
-                            const audioUrl = metadata[field.csvColumnName];
-                            return audioUrl ? (
-                              <div className="flex items-center space-x-3">
-                                <Button
-                                  size="sm"
-                                  onClick={() => openAudioOverlay(audioUrl)}
-                                  className="bg-blue-600 hover:bg-blue-700"
-                                >
-                                  <Volume2 className="h-4 w-4 mr-2" />
-                                  Play Audio
-                                </Button>
-                                <span className="text-sm text-gray-600 truncate">
-                                  {audioUrl}
-                          </span>
-                        </div>
-                            ) : (
-                              <div className="text-sm text-gray-500 text-center">
-                                No audio found
-                      </div>
-                            );
-                          })()}
-                    </div>
-                      )}
-
-                      {/* Default display for other field types */}
-                      {!['text', 'image', 'audio'].includes(field.fieldType) && (
-                        <div className="p-3 border border-gray-200 rounded-md bg-white text-sm text-gray-800 whitespace-pre-wrap">
-                          {formatTextContent(metadata[field.csvColumnName], field.csvColumnName)}
-                  </div>
-              )}
-            </div>
-                  )}
-          </div>
-        </div>
-            ))}
-
-            {orderedMetadataFields.length === 0 && (
-              <div className="text-center text-gray-500 py-8">
-                <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-2xl text-gray-400">📋</span>
-          </div>
-                <h3 className="text-lg font-medium mb-2">No Metadata Fields</h3>
-                <p className="text-sm">
-                  Configure metadata fields in the field configuration to see them here.
-                </p>
-              </div>
-            )}
-        </div>
-      </div>
+          onDrop={handleDrop}
+          onEditField={handleEditField}
+          onSaveField={handleSaveField}
+          onCancelEdit={handleCancelEdit}
+          onToggleTextExpansion={toggleTextExpansion}
+          onOpenImageOverlay={openImageOverlay}
+          onOpenAudioOverlay={openAudioOverlay}
+        />
 
         {/* Right Panel: New Column Data Entry */}
         <NewColumnDataPanel
@@ -1143,79 +905,21 @@ export function AnnotationWorkbench({
       />
 
       {/* Image Overlay */}
-      {imageOverlay.isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-          <div className="relative max-w-4xl max-h-full">
-            <button
-              onClick={closeImageOverlay}
-              className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
-            >
-              <X className="h-6 w-6" />
-            </button>
-            
-            <img
-              src={imageOverlay.imageUrl}
-              alt="Full size"
-              className="max-w-full max-h-full object-contain"
-            />
-            
-            {imageOverlay.imageUrls.length > 1 && (
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                  onClick={() => navigateImage('prev')}
-                  disabled={imageOverlay.currentIndex === 0}
-                  className="bg-white"
-                    >
-                  <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                <span className="px-3 py-1 bg-white rounded text-sm">
-                  {imageOverlay.currentIndex + 1} / {imageOverlay.imageUrls.length}
-                </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                  onClick={() => navigateImage('next')}
-                  disabled={imageOverlay.currentIndex === imageOverlay.imageUrls.length - 1}
-                  className="bg-white"
-                    >
-                  <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                    )}
-                  </div>
-                </div>
-                      )}
+      <ImageOverlay
+        isOpen={imageOverlay.isOpen}
+        imageUrl={imageOverlay.imageUrl}
+        imageUrls={imageOverlay.imageUrls}
+        currentIndex={imageOverlay.currentIndex}
+        onClose={closeImageOverlay}
+        onNavigate={navigateImage}
+      />
 
       {/* Audio Overlay */}
-      {audioOverlay.isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Audio Player</h3>
-                      <button
-                onClick={closeAudioOverlay}
-                className="text-gray-400 hover:text-gray-600"
-                      >
-                <X className="h-6 w-6" />
-                              </button>
-                            </div>
-
-            <audio
-              controls
-              className="w-full"
-              src={audioOverlay.audioUrl}
-            >
-              Your browser does not support the audio element.
-            </audio>
-            
-            <div className="mt-4 text-sm text-gray-600">
-              <p className="truncate">URL: {audioOverlay.audioUrl}</p>
-                              </div>
-                          </div>
-                        </div>
-                      )}
+      <AudioOverlay
+        isOpen={audioOverlay.isOpen}
+        audioUrl={audioOverlay.audioUrl}
+        onClose={closeAudioOverlay}
+      />
     </div>
   );
 }
