@@ -58,6 +58,27 @@ export interface AnnotationConfig {
   updatedAt: string;
 }
 
+export interface PatchAnnotationConfigRequest {
+  annotationFields?: AnnotationField[];
+  annotationLabels?: any[];
+  status?: string;
+}
+
+export interface PatchRowAnnotationRequest {
+  annotations: Record<string, any>;
+  confidence?: number;
+  notes?: string;
+  status?: string;
+}
+
+export interface PatchAnnotationResponse {
+  success: boolean;
+  data: any;
+  updatedFields: number;
+  changedFields: string[];
+  updatedAt: string;
+}
+
 export class CSVImportsAPI {
   // Get CSV import by ID with full data including rowData
   static async findOne(id: string): Promise<CSVImport> {
@@ -117,5 +138,66 @@ export class CSVImportsAPI {
       `/datasets/${datasetId}/csv-imports/${csvImportId}`,
     );
     return response.data;
+  }
+
+  // PATCH Methods for Partial Updates
+  static async patchAnnotationConfig(
+    csvImportId: string,
+    patchData: PatchAnnotationConfigRequest,
+  ): Promise<PatchAnnotationResponse> {
+    const response = await jsonApi.patch(
+      `/csv-processing/field-selection/${csvImportId}`,
+      patchData,
+    );
+    return response.data;
+  }
+
+  static async patchRowAnnotation(
+    csvImportId: string,
+    rowIndex: number,
+    patchData: PatchRowAnnotationRequest,
+  ): Promise<PatchAnnotationResponse> {
+    const response = await jsonApi.patch(
+      `/csv-processing/field-selection/${csvImportId}/row/${rowIndex}`,
+      patchData,
+    );
+    return response.data;
+  }
+
+  static async patchAnnotationField(
+    csvImportId: string,
+    fieldIndex: number,
+    patchData: PatchAnnotationConfigRequest,
+  ): Promise<PatchAnnotationResponse> {
+    const response = await jsonApi.patch(
+      `/csv-processing/field-selection/${csvImportId}/field/${fieldIndex}`,
+      patchData,
+    );
+    return response.data;
+  }
+
+  // Direct CSV row data update method
+  static async patchCSVRowData(
+    csvImportId: string,
+    rowIndex: number,
+    updatedData: Record<string, any>,
+  ): Promise<PatchAnnotationResponse> {
+    const response = await jsonApi.patch(
+      `/csv-processing/data/${csvImportId}/row/${rowIndex}`,
+      { data: updatedData },
+    );
+    return response.data;
+  }
+
+  // Utility method to create partial update objects
+  static createPartialUpdate<T extends Record<string, any>>(updates: Partial<T>): Partial<T> {
+    // Remove undefined values to ensure only changed fields are sent
+    const cleanedUpdates: Partial<T> = {};
+    Object.keys(updates).forEach(key => {
+      if (updates[key as keyof T] !== undefined) {
+        cleanedUpdates[key as keyof T] = updates[key as keyof T];
+      }
+    });
+    return cleanedUpdates;
   }
 }

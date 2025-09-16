@@ -15,7 +15,7 @@ interface NewColumnDataPanelProps {
   annotationConfig: AnnotationConfig | null;
   newColumnData: NewColumnData;
   onNewColumnChange: (fieldName: string, value: string) => void;
-  onSaveProgress: () => void;
+  onSaveAllNewColumnData: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onExportCSV: () => void;
@@ -30,7 +30,7 @@ export function NewColumnDataPanel({
   annotationConfig,
   newColumnData,
   onNewColumnChange,
-  onSaveProgress,
+  onSaveAllNewColumnData,
   onUndo,
   onRedo,
   onExportCSV,
@@ -110,11 +110,12 @@ export function NewColumnDataPanel({
 
           <Button
             size="sm"
-            onClick={onSaveProgress}
+            onClick={onSaveAllNewColumnData}
+            disabled={isSaving}
             className="bg-blue-600 hover:bg-blue-700"
           >
             <Save className="h-4 w-4 mr-2" />
-            Save All Annotations
+            {isSaving ? 'Saving...' : 'Save New Column Data'}
           </Button>
         </div>
 

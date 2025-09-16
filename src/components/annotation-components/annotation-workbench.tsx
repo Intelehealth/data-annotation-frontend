@@ -22,12 +22,16 @@ import {
   CSVImport,
   AnnotationConfig,
   AnnotationField,
+  CSVImportsAPI,
+  PatchAnnotationConfigRequest,
+  PatchRowAnnotationRequest,
 } from '@/lib/api/csv-imports';
 import { fieldSelectionAPI } from '@/lib/api/field-config';
 import { csvProcessingAPI } from '@/lib/api/csv-processing';
 import { RowFooter, NewColumnDataPanel } from '@/components/new-column-components';
 import { MetadataDisplay } from './metadata-display';
 import { ImageOverlay, AudioOverlay } from './media-overlays';
+import { useToast } from '@/components/ui/toast';
 
 interface Task {
   id: string;
@@ -69,6 +73,7 @@ export function AnnotationWorkbench({
   datasetId,
 }: AnnotationWorkbenchProps) {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [metadata, setMetadata] = useState<Record<string, any>>({});
@@ -76,7 +81,7 @@ export function AnnotationWorkbench({
   const [newColumnData, setNewColumnData] = useState<NewColumnData>({});
   const [history, setHistory] = useState<any[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<Date | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -98,6 +103,8 @@ export function AnnotationWorkbench({
     audioUrl: '',
   });
   const [draggedField, setDraggedField] = useState<string | null>(null);
+  const [pendingChanges, setPendingChanges] = useState<Record<string, any>>({});
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize ordered metadata fields when annotation config changes
   useEffect(() => {
@@ -478,91 +485,18 @@ export function AnnotationWorkbench({
     }
   }, [csvImport, annotations, annotationConfig]);
 
-  // Autosave functionality
-  const saveProgress = useCallback(async () => {
-    if (!currentTask || !csvImportId) return;
+  // Individual field save only - bulk save removed
 
-    setIsSaving(true);
-    try {
-      // Save new column data as annotations
-      const annotationFields = annotationConfig?.annotationFields.filter(
-        (field) => field.isNewColumn || field.isAnnotationField
-      ) || [];
+  // Auto-save disabled - only save when button is clicked
 
-      for (const field of annotationFields) {
-        const fieldValue = newColumnData[field.fieldName];
-        if (fieldValue && fieldValue.trim()) {
-          // Check if annotation already exists for this field
-          const existingAnnotation = annotations.find(
-            (ann) => ann.fieldName === field.fieldName
-          );
-
-          const annotationData = {
-            csvImportId,
-            csvRowIndex: currentTask.rowIndex,
-            fieldName: field.fieldName,
-            type: 'CLASSIFICATION' as any,
-            label: field.fieldName,
-            data: { value: fieldValue },
-            isAiGenerated: false,
-            confidenceScore: 1.0,
-            metadata: {},
-          };
-
-          if (existingAnnotation && existingAnnotation._id && 
-              /^[0-9a-fA-F]{24}$/.test(existingAnnotation._id)) {
-            // Update existing annotation
-            await AnnotationsAPI.update(existingAnnotation._id, annotationData);
-          } else {
-          // Create new annotation
-          const newAnnotation = await AnnotationsAPI.create(annotationData);
-          // Update the annotation in state
-          setAnnotations((prev) => [
-            ...prev.filter((a) => a.fieldName !== field.fieldName),
-            { 
-              ...annotationData, 
-              _id: newAnnotation._id,
-              ...(user?._id && { userId: user._id }),
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            } as Annotation,
-          ]);
-          }
-        }
-      }
-
-      // Update task status based on whether new column data exists
-      const hasNewColumnData = Object.values(newColumnData).some(value => value && value.trim());
-      const updatedStatus: 'pending' | 'in_progress' | 'completed' | 'needs_review' = hasNewColumnData ? 'completed' : 'pending';
-
-      const updatedTask: Task = {
-        ...currentTask,
-        metadata,
-        annotations,
-        status: updatedStatus,
-        updatedAt: new Date(),
-      };
-
-      setTasks((prev) =>
-        prev.map((task) => (task.id === currentTask.id ? updatedTask : task)),
-      );
-
-      // Update last saved time
-      setLastSavedTime(new Date());
-    } catch (err) {
-      console.error('Error saving progress:', err);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [currentTask, metadata, annotations, newColumnData, csvImportId, annotationConfig]);
-
-  // Auto-save every 5 seconds
+  // Cleanup timeout on unmount
   useEffect(() => {
-    if (!autoSaveEnabled) return;
-
-    const interval = setInterval(saveProgress, 5000);
-    return () => clearInterval(interval);
-  }, [saveProgress, autoSaveEnabled]);
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Undo/Redo functionality
   const addToHistory = useCallback(
@@ -602,10 +536,6 @@ export function AnnotationWorkbench({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) {
         switch (e.key) {
-          case 's':
-            e.preventDefault();
-            saveProgress();
-            break;
           case 'z':
             if (e.shiftKey) {
               e.preventDefault();
@@ -629,7 +559,7 @@ export function AnnotationWorkbench({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [saveProgress, undo, redo]);
+  }, [undo, redo]);
 
   const navigateTask = (direction: 'prev' | 'next') => {
     if (direction === 'prev' && currentTaskIndex > 0) {
@@ -687,6 +617,66 @@ export function AnnotationWorkbench({
     }));
     setEditingField(null);
   };
+
+  // Individual field save handler for CSV row data
+  const handleSaveIndividualField = useCallback(async (fieldName: string, fieldValue: string) => {
+    if (!csvImportId || !currentTask) return;
+    
+    setIsSaving(true);
+    try {
+      const fieldData = { [fieldName]: fieldValue };
+
+      const response = await CSVImportsAPI.patchCSVRowData(
+        csvImportId,
+        currentTask.rowIndex,
+        fieldData
+      );
+
+      if (response.success && response.data) {
+        // Update local CSV import data
+        if (csvImport && csvImport.rowData) {
+          const updatedRow = csvImport.rowData.find(row => row.rowIndex === currentTask.rowIndex);
+          if (updatedRow) {
+            updatedRow.data[fieldName] = fieldValue;
+            updatedRow.processed = true;
+            setCsvImport({ ...csvImport });
+          }
+        }
+
+        // Update current task metadata to immediately reflect the changes
+        const updatedTask = {
+          ...currentTask,
+          metadata: {
+            ...currentTask.metadata,
+            [fieldName]: fieldValue
+          },
+          updatedAt: new Date(),
+        };
+
+        // Update the tasks array
+        setTasks(prev => prev.map(task => 
+          task.id === currentTask.id ? updatedTask : task
+        ));
+
+        setLastSavedTime(new Date());
+        showToast({
+          type: 'success',
+          title: 'Field Saved',
+          description: `Field "${fieldName}" saved successfully!`,
+        });
+      }
+
+    } catch (error: any) {
+      console.error(`Failed to save field "${fieldName}":`, error);
+      showToast({
+        type: 'error',
+        title: 'Save Failed',
+        description: `Failed to save field "${fieldName}": ${error?.message || 'Unknown error'}`,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [csvImportId, currentTask, csvImport, showToast]);
 
   const handleCancelEdit = () => {
     setEditingField(null);
@@ -756,13 +746,201 @@ export function AnnotationWorkbench({
     });
   };
 
-  // New column data handlers
-  const handleNewColumnChange = (fieldName: string, value: string) => {
+  // Save all new column data function
+  const saveAllNewColumnData = useCallback(async () => {
+    if (!csvImportId || !currentTask) return;
+
+    const annotationFields = annotationConfig?.annotationFields.filter(
+      (field) => field.isNewColumn || field.isAnnotationField
+    ) || [];
+
+    const dataToSave: Record<string, any> = {};
+    let hasChanges = false;
+
+    // Collect all new column data that has values
+    for (const field of annotationFields) {
+      const fieldValue = newColumnData[field.fieldName];
+      if (fieldValue !== undefined && fieldValue !== null && fieldValue.trim() !== '') {
+        dataToSave[field.fieldName] = fieldValue;
+        hasChanges = true;
+      }
+    }
+
+    if (!hasChanges) {
+      showToast({
+        type: 'error',
+        title: 'No Data to Save',
+        description: 'Please enter data in at least one field before saving.',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await CSVImportsAPI.patchCSVRowData(
+        csvImportId,
+        currentTask.rowIndex,
+        dataToSave
+      );
+
+      if (response.success && response.data) {
+        // Update local CSV import data
+        if (csvImport && csvImport.rowData) {
+          const updatedRow = csvImport.rowData.find(row => row.rowIndex === currentTask.rowIndex);
+          if (updatedRow) {
+            Object.entries(dataToSave).forEach(([fieldName, value]) => {
+              updatedRow.data[fieldName] = value;
+            });
+            updatedRow.processed = true;
+            setCsvImport({ ...csvImport });
+          }
+        }
+
+        // Update current task metadata to immediately reflect the changes
+        const updatedTask = {
+          ...currentTask,
+          metadata: {
+            ...currentTask.metadata,
+            ...dataToSave
+          },
+          status: 'completed' as const,
+          updatedAt: new Date(),
+        };
+
+        // Update the tasks array
+        setTasks(prev => prev.map(task => 
+          task.id === currentTask.id ? updatedTask : task
+        ));
+
+        setLastSavedTime(new Date());
+        setPendingChanges({});
+        
+        showToast({
+          type: 'success',
+          title: 'New Column Data Saved',
+          description: `Successfully saved ${response.updatedFields} field(s): ${response.changedFields.join(', ')}`,
+        });
+      }
+
+    } catch (error: any) {
+      console.error('Failed to save new column data:', error);
+      showToast({
+        type: 'error',
+        title: 'Save Failed',
+        description: `Failed to save new column data: ${error?.message || 'Unknown error'}`,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [csvImportId, currentTask, csvImport, newColumnData, annotationConfig, showToast]);
+
+  // New column data handlers - no auto-save, only manual save
+  const handleNewColumnChange = useCallback((fieldName: string, value: string) => {
     setNewColumnData(prev => ({
       ...prev,
       [fieldName]: value,
     }));
-  };
+
+    setPendingChanges(prev => ({
+      ...prev,
+      [fieldName]: value,
+    }));
+
+    addToHistory({
+      metadata,
+      annotations,
+      newColumnData: { ...newColumnData, [fieldName]: value },
+    });
+  }, [metadata, annotations, newColumnData, addToHistory]);
+
+  // Field configuration update methods
+  const updateAnnotationFieldConfig = useCallback(async (
+    fieldIndex: number, 
+    updates: Partial<AnnotationField>
+  ) => {
+    if (!annotationConfig || !csvImportId) return;
+
+    try {
+      setIsSaving(true);
+
+      // Optimistic update - update local state immediately
+      const updatedFields = [...annotationConfig.annotationFields];
+      updatedFields[fieldIndex] = {
+        ...updatedFields[fieldIndex],
+        ...updates
+      };
+
+      setAnnotationConfig(prev => prev ? {
+        ...prev,
+        annotationFields: updatedFields
+      } : null);
+
+      // Send PATCH request to backend
+      const patchData: PatchAnnotationConfigRequest = {
+        annotationFields: [updates as AnnotationField]
+      };
+
+      const response = await CSVImportsAPI.patchAnnotationField(
+        csvImportId,
+        fieldIndex,
+        patchData
+      );
+
+      console.log('Field configuration updated:', response);
+
+      if (response.success) {
+        console.log(`Updated ${response.updatedFields} field properties:`, response.changedFields);
+      }
+
+    } catch (error) {
+      console.error('Error updating field configuration:', error);
+      setError('Failed to update field configuration');
+      
+      // Revert optimistic update on error
+      if (annotationConfig) {
+        setAnnotationConfig(prev => prev);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }, [annotationConfig, csvImportId]);
+
+  // Annotation configuration update method
+  const updateAnnotationConfig = useCallback(async (updates: PatchAnnotationConfigRequest) => {
+    if (!csvImportId || !annotationConfig) return;
+
+    try {
+      setIsSaving(true);
+
+      // Optimistic update
+      setAnnotationConfig(prev => prev ? {
+        ...prev,
+        ...updates
+      } : null);
+
+      // Send PATCH request
+      const response = await CSVImportsAPI.patchAnnotationConfig(csvImportId, updates);
+
+      console.log('Annotation configuration updated:', response);
+
+      if (response.success && response.data) {
+        // Update with server response
+        setAnnotationConfig(response.data);
+        console.log(`Updated ${response.updatedFields} configuration fields:`, response.changedFields);
+      }
+
+    } catch (error) {
+      console.error('Error updating annotation configuration:', error);
+      setError('Failed to update annotation configuration');
+      
+      // Revert optimistic update on error
+      if (annotationConfig) {
+        setAnnotationConfig(prev => prev);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }, [csvImportId, annotationConfig]);
 
   const annotatedTasks = tasks.filter(
     (task) => task.status === 'completed',
@@ -806,24 +984,26 @@ export function AnnotationWorkbench({
       (field) => field.isNewColumn || field.isAnnotationField
     );
 
-    // Load existing annotations for this row
+    // Load existing data for this row from CSV row data
     const loadRowData = async () => {
       try {
+        // Load annotations from the annotations collection
         const rowAnnotations = await AnnotationsAPI.findByCSVRow(
           csvImportId,
           currentTask.rowIndex,
         );
+        setAnnotations(rowAnnotations);
 
+        // Load new column data from CSV row data (where we actually save it)
         const newColumnData: NewColumnData = {};
         annotationFields.forEach((field) => {
-          const fieldAnnotation = rowAnnotations.find(
-            (ann) => ann.fieldName === field.fieldName
-          );
-          newColumnData[field.fieldName] = fieldAnnotation?.data?.value || '';
+          // Check if the field data exists in the current task's metadata (CSV row data)
+          const fieldValue = currentTask.metadata?.[field.fieldName];
+          newColumnData[field.fieldName] = fieldValue || '';
         });
 
         setNewColumnData(newColumnData);
-        setAnnotations(rowAnnotations);
+        console.log('Loaded new column data from CSV row:', newColumnData);
       } catch (err) {
         console.error('Error loading row data:', err);
       }
@@ -873,6 +1053,7 @@ export function AnnotationWorkbench({
           onDrop={handleDrop}
           onEditField={handleEditField}
           onSaveField={handleSaveField}
+          onSaveIndividualField={handleSaveIndividualField}
           onCancelEdit={handleCancelEdit}
           onToggleTextExpansion={toggleTextExpansion}
           onOpenImageOverlay={openImageOverlay}
@@ -884,13 +1065,13 @@ export function AnnotationWorkbench({
           annotationConfig={annotationConfig}
           newColumnData={newColumnData}
           onNewColumnChange={handleNewColumnChange}
-          onSaveProgress={saveProgress}
+          onSaveAllNewColumnData={saveAllNewColumnData}
           onUndo={undo}
           onRedo={redo}
           onExportCSV={exportAnnotationsToCSV}
           historyIndex={historyIndex}
           historyLength={history.length}
-          autoSaveEnabled={autoSaveEnabled}
+          autoSaveEnabled={false}
           isSaving={isSaving}
           lastSavedTime={lastSavedTime}
         />

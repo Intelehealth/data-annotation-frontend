@@ -40,6 +40,7 @@ interface MetadataDisplayProps {
   onDrop: (e: React.DragEvent, targetFieldName: string) => void;
   onEditField: (fieldName: string) => void;
   onSaveField: (fieldName: string, newValue: string) => void;
+  onSaveIndividualField: (fieldName: string, fieldValue: string) => void;
   onCancelEdit: () => void;
   onToggleTextExpansion: (fieldName: string) => void;
   onOpenImageOverlay: (imageUrls: string[], startIndex?: number) => void;
@@ -90,6 +91,7 @@ export function MetadataDisplay({
   onDrop,
   onEditField,
   onSaveField,
+  onSaveIndividualField,
   onCancelEdit,
   onToggleTextExpansion,
   onOpenImageOverlay,
@@ -156,7 +158,7 @@ export function MetadataDisplay({
                   <div className="flex space-x-2">
                     <Button
                       size="sm"
-                      onClick={() => onSaveField(field.csvColumnName, metadata[field.csvColumnName] || '')}
+                      onClick={() => onSaveIndividualField(field.csvColumnName, metadata[field.csvColumnName] || '')}
                       className="bg-blue-600 hover:bg-blue-700"
                     >
                       Save
