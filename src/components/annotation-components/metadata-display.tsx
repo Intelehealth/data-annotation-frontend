@@ -101,7 +101,7 @@ export function MetadataDisplay({
     <div className="w-1/2 border-r border-gray-200 bg-white flex flex-col">
       <div className="p-4 border-b border-gray-100">
         <h2 className="text-lg font-semibold text-gray-900">
-          Metadata - Row {metadata.rowIndex || 'N/A'}
+          Metadata - Row {metadata.rowIndex !== undefined ? metadata.rowIndex + 1 : 'N/A'}
         </h2>
         <p className="text-sm text-gray-500 mt-1">
           Drag fields to reorder • Click edit to modify content

@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from 'react';
 import { Label } from '@/components/ui/label';
-import { Eye } from 'lucide-react';
 
 interface ImageThumbnailsProps {
   imageUrls: string | string[];
@@ -68,7 +67,7 @@ export function ImageThumbnails({
           return (
             <div
               key={index}
-              className={`relative group cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
+              className={`relative group cursor-pointer rounded-lg overflow-hidden border-2 transition-all bg-[#f3f4f6] ${
                 selectedIndex === index
                   ? 'border-blue-500 shadow-md'
                   : 'border-gray-200 hover:border-gray-300'
@@ -83,7 +82,6 @@ export function ImageThumbnails({
                   console.log('Thumbnail image loaded:', trimmedUrl);
                   const target = e.target as HTMLImageElement;
                   target.style.opacity = '1';
-                  target.style.backgroundColor = 'transparent';
                 }}
                 onError={(e) => {
                   console.log('Thumbnail image failed to load:', trimmedUrl);
@@ -108,7 +106,6 @@ export function ImageThumbnails({
                 style={{
                   opacity: '0',
                   transition: 'opacity 0.3s ease-in-out',
-                  backgroundColor: '#f3f4f6',
                   minHeight: '80px',
                   maxHeight: '80px',
                   display: 'block',
@@ -118,11 +115,6 @@ export function ImageThumbnails({
               {/* Image number overlay */}
               <div className="absolute top-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
                 {index + 1}
-              </div>
-
-              {/* Hover overlay */}
-              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded flex items-center justify-center">
-                <Eye className="h-4 w-4 text-white opacity-0 group-hover:opacity-100" />
               </div>
             </div>
           );

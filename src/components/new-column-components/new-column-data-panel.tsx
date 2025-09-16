@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Save, Undo, Redo, FileText } from 'lucide-react';
+import { Save, Undo, Redo } from 'lucide-react';
 import { AnnotationField, AnnotationConfig } from '@/lib/api/csv-imports';
+import { ExportDropdown, ExportOption } from '@/components/ui/export-dropdown';
 
 interface NewColumnData {
   [fieldName: string]: string;
@@ -18,7 +19,8 @@ interface NewColumnDataPanelProps {
   onSaveAllNewColumnData: () => void;
   onUndo: () => void;
   onRedo: () => void;
-  onExportCSV: () => void;
+  onExportSelectedColumns: () => void;
+  onExportAllColumns: () => void;
   historyIndex: number;
   historyLength: number;
   autoSaveEnabled: boolean;
@@ -33,7 +35,8 @@ export function NewColumnDataPanel({
   onSaveAllNewColumnData,
   onUndo,
   onRedo,
-  onExportCSV,
+  onExportSelectedColumns,
+  onExportAllColumns,
   historyIndex,
   historyLength,
   autoSaveEnabled,
@@ -43,6 +46,22 @@ export function NewColumnDataPanel({
   const annotationFields = annotationConfig?.annotationFields.filter(
     (field) => field.isNewColumn || field.isAnnotationField
   ) || [];
+
+  // Create export options
+  const exportOptions: ExportOption[] = [
+    {
+      id: 'selected-columns',
+      label: 'Export Selected Columns',
+      description: 'Export only configured fields and new annotation columns',
+      action: onExportSelectedColumns,
+    },
+    {
+      id: 'all-columns',
+      label: 'Export All Columns',
+      description: 'Export all original CSV columns plus new annotation columns',
+      action: onExportAllColumns,
+    },
+  ];
 
   return (
     <div className="w-1/2 bg-white flex flex-col">
@@ -137,17 +156,12 @@ export function NewColumnDataPanel({
           </div>
         </div>
 
-        {/* Export CSV Button */}
+        {/* Export CSV Dropdown */}
         <div className="pt-2 border-t border-gray-100">
-          <Button
-            size="sm"
-            onClick={onExportCSV}
-            variant="outline"
-            className="w-full border-green-600 text-green-600 hover:bg-green-50"
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
+          <ExportDropdown 
+            options={exportOptions}
+            disabled={isSaving}
+          />
         </div>
       </div>
     </div>

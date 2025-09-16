@@ -32,6 +32,7 @@ import { RowFooter, NewColumnDataPanel } from '@/components/new-column-component
 import { MetadataDisplay } from './metadata-display';
 import { ImageOverlay, AudioOverlay } from './media-overlays';
 import { useToast } from '@/components/ui/toast';
+import { exportToCsv, ExportData } from '@/lib/csv-export-helper';
 
 interface Task {
   id: string;
@@ -230,7 +231,7 @@ export function AnnotationWorkbench({
           taskData = csvData.rowData.map((row: any) => ({
             id: `row-${row.rowIndex}`,
             rowIndex: row.rowIndex,
-            fileName: `Row ${row.rowIndex}`,
+            fileName: `Row ${row.rowIndex + 1}`, // Display as 1-based for user friendliness
             fileType: 'text', // Default to text, will be determined by annotation fields
             filePath: `/csv/${csvImportId}/row/${row.rowIndex}`,
             status: 'pending',
@@ -246,11 +247,11 @@ export function AnnotationWorkbench({
             csvData.totalRows,
           );
           taskData = Array.from({ length: csvData.totalRows }, (_, index) => ({
-            id: `row-${index + 1}`,
-            rowIndex: index + 1,
-            fileName: `Row ${index + 1}`,
+            id: `row-${index}`,
+            rowIndex: index, // Keep 0-based for backend consistency
+            fileName: `Row ${index + 1}`, // Display as 1-based for user friendliness
             fileType: 'text',
-            filePath: `/csv/${csvImportId}/row/${index + 1}`,
+            filePath: `/csv/${csvImportId}/row/${index}`,
             status: 'pending',
             metadata: {},
             annotations: [],
@@ -371,34 +372,164 @@ export function AnnotationWorkbench({
     );
   };
 
-  // Export annotations to CSV
-  const exportAnnotationsToCSV = useCallback(async () => {
+  // Export annotations to CSV - Selected Columns Only
+  const exportSelectedColumnsToCSV = useCallback(async () => {
     if (!csvImport) {
       console.log('Cannot export: missing CSV data');
       return;
     }
 
     try {
-      console.log('Exporting annotations to CSV...');
+      console.log('Exporting selected columns to CSV...');
 
       // Get all rows with their annotations
       const allRows = csvImport.rowData || [];
-      const exportedRows: any[] = [];
 
+      // Get selected fields (metadata fields + annotation fields)
+      const selectedFields = annotationConfig?.annotationFields.filter(
+        (field) => field.isMetadataField || field.isAnnotationField || field.isNewColumn
+      ) || [];
+
+      console.log('Selected fields for export:', selectedFields.map(f => ({
+        csvColumnName: f.csvColumnName,
+        fieldName: f.fieldName,
+        isMetadataField: f.isMetadataField,
+        isAnnotationField: f.isAnnotationField,
+        isNewColumn: f.isNewColumn
+      })));
+
+      // Prepare export data
+      const exportRows: Record<string, any>[] = [];
+      const headers: string[] = [];
+
+      // Build headers from selected fields
+      selectedFields.forEach((field) => {
+        if (field.isMetadataField && !field.isNewColumn) {
+          headers.push(field.csvColumnName);
+        } else if (field.isAnnotationField || field.isNewColumn) {
+          headers.push(field.fieldName);
+        }
+      });
+
+      // Build rows
       for (let rowIndex = 0; rowIndex < allRows.length; rowIndex++) {
         const row = allRows[rowIndex];
         const rowAnnotations = annotations.filter(
           (ann) => ann.csvRowIndex === rowIndex,
         );
 
-        // Start with original CSV data
-        const exportedRow = { ...row.data };
+        const exportedRow: Record<string, any> = {};
 
-        // Add new column data for each annotation field
-        const annotationFields = annotationConfig?.annotationFields.filter(
-          (field) => field.isAnnotationField
-        ) || [];
+        // Add selected fields
+        selectedFields.forEach((field) => {
+          if (field.isMetadataField && !field.isNewColumn) {
+            // Original CSV column - check if it exists in stored data
+            if (row.data && row.data.hasOwnProperty(field.csvColumnName)) {
+              exportedRow[field.csvColumnName] = row.data[field.csvColumnName] || '';
+            } else {
+              // Column was filtered out during processing, include as empty
+              exportedRow[field.csvColumnName] = '';
+            }
+          } else if (field.isAnnotationField || field.isNewColumn) {
+            // New annotation column
+            const fieldAnnotation = rowAnnotations.find(
+              (ann) => ann.fieldName === field.fieldName,
+            );
 
+            if (fieldAnnotation && fieldAnnotation.data?.value) {
+              exportedRow[field.fieldName] = fieldAnnotation.data.value;
+            } else {
+              // Check if data exists in the row's metadata (for new columns)
+              exportedRow[field.fieldName] = row.data[field.fieldName] || '';
+            }
+          }
+        });
+
+        exportRows.push(exportedRow);
+      }
+
+      const exportData: ExportData = {
+        headers,
+        rows: exportRows,
+      };
+
+      // Export using helper function
+      exportToCsv(
+        exportData,
+        `selected_columns_${csvImport.fileName || 'data'}.csv`,
+        {
+          cleanHtml: true,
+          showSuccess: true,
+          onSuccess: (message) => {
+            console.log('Selected columns CSV exported successfully');
+            showToast({
+              type: 'success',
+              title: 'Export Complete',
+              description: message,
+            });
+          },
+          onError: (error) => {
+            console.error('Error exporting selected columns CSV:', error);
+            setError('Failed to export selected columns CSV');
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Error exporting selected columns CSV:', error);
+      setError('Failed to export selected columns CSV');
+    }
+  }, [csvImport, annotations, annotationConfig, showToast]);
+
+  // Export annotations to CSV - All Columns (Fixed to include ALL original columns)
+  const exportAllColumnsToCSV = useCallback(async () => {
+    if (!csvImport) {
+      console.log('Cannot export: missing CSV data');
+      return;
+    }
+
+    try {
+      console.log('Exporting all columns to CSV...');
+
+      // Get all rows with their annotations
+      const allRows = csvImport.rowData || [];
+
+      // Get all original CSV columns from the stored columns array
+      const originalColumns = csvImport.columns || [];
+      
+      // Get annotation fields (new columns)
+      const annotationFields = annotationConfig?.annotationFields.filter(
+        (field) => field.isAnnotationField || field.isNewColumn
+      ) || [];
+
+      console.log('Original CSV columns:', originalColumns);
+      console.log('Annotation fields (new columns):', annotationFields.map(f => f.fieldName));
+
+      // Prepare export data
+      const exportRows: Record<string, any>[] = [];
+      const headers: string[] = [...originalColumns, ...annotationFields.map(f => f.fieldName)];
+
+      // Build rows
+      for (let rowIndex = 0; rowIndex < allRows.length; rowIndex++) {
+        const row = allRows[rowIndex];
+        const rowAnnotations = annotations.filter(
+          (ann) => ann.csvRowIndex === rowIndex,
+        );
+
+        const exportedRow: Record<string, any> = {};
+        
+        // First, add ALL original CSV columns (even if empty in stored data)
+        originalColumns.forEach((columnName) => {
+          // Check if this column exists in the stored row data
+          if (row.data && row.data.hasOwnProperty(columnName)) {
+            exportedRow[columnName] = row.data[columnName] || '';
+          } else {
+            // Column doesn't exist in stored data (was filtered out during processing)
+            // This is the key fix - we include empty columns that were filtered out
+            exportedRow[columnName] = '';
+          }
+        });
+
+        // Then add new annotation columns
         annotationFields.forEach((field) => {
           const fieldAnnotation = rowAnnotations.find(
             (ann) => ann.fieldName === field.fieldName,
@@ -407,83 +538,45 @@ export function AnnotationWorkbench({
           if (fieldAnnotation && fieldAnnotation.data?.value) {
             exportedRow[field.fieldName] = fieldAnnotation.data.value;
           } else {
-            exportedRow[field.fieldName] = '';
+            // Check if data exists in the row's metadata (for new columns)
+            exportedRow[field.fieldName] = row.data[field.fieldName] || '';
           }
         });
 
-        exportedRows.push(exportedRow);
+        exportRows.push(exportedRow);
       }
 
-      // Convert to CSV
-      const headers = Object.keys(exportedRows[0]);
-      const csvContent = [
-        headers.join(','),
-        ...exportedRows.map((row) =>
-          headers
-            .map((header) => {
-              const value = row[header];
-              // Handle structured data with newlines
-              let stringValue = '';
-              if (value === null || value === undefined) {
-                stringValue = '';
-              } else if (typeof value === 'object') {
-                if (Array.isArray(value)) {
-                  stringValue = value.join('\n');
-                } else {
-                  // Try to extract meaningful data from objects
-                  const urlKeys = ['url', 'href', 'src', 'link', 'value'];
-                  let found = false;
-                  for (const key of urlKeys) {
-                    if (value[key] && typeof value[key] === 'string') {
-                      stringValue = value[key];
-                      found = true;
-                      break;
-                    }
-                  }
-                  if (!found) {
-                    stringValue = JSON.stringify(value, null, 2);
-                  }
-                }
-              } else {
-                stringValue = String(value);
-              }
+      const exportData: ExportData = {
+        headers,
+        rows: exportRows,
+      };
 
-              // Escape commas, quotes, and newlines in CSV
-              if (
-                typeof stringValue === 'string' &&
-                (stringValue.includes(',') ||
-                  stringValue.includes('"') ||
-                  stringValue.includes('\n'))
-              ) {
-                return `"${stringValue.replace(/"/g, '""')}"`;
-              }
-              return stringValue || '';
-            })
-            .join(','),
-        ),
-      ].join('\n');
-
-      // Create and download CSV file
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute(
-        'download',
-        `annotated_${csvImport.fileName || 'data'}.csv`,
+      // Export using helper function
+      exportToCsv(
+        exportData,
+        `all_columns_${csvImport.fileName || 'data'}.csv`,
+        {
+          cleanHtml: true,
+          showSuccess: true,
+          onSuccess: (message) => {
+            console.log('All columns CSV exported successfully');
+            showToast({
+              type: 'success',
+              title: 'Export Complete',
+              description: `Exported ${originalColumns.length} original + ${annotationFields.length} new columns`,
+            });
+          },
+          onError: (error) => {
+            console.error('Error exporting all columns CSV:', error);
+            setError('Failed to export all columns CSV');
+          },
+        }
       );
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      console.log('CSV exported successfully');
     } catch (error) {
-      console.error('Error exporting CSV:', error);
-      setError('Failed to export CSV');
+      console.error('Error exporting all columns CSV:', error);
+      setError('Failed to export all columns CSV');
     }
-  }, [csvImport, annotations, annotationConfig]);
+  }, [csvImport, annotations, annotationConfig, showToast]);
 
   // Individual field save only - bulk save removed
 
@@ -1068,7 +1161,8 @@ export function AnnotationWorkbench({
           onSaveAllNewColumnData={saveAllNewColumnData}
           onUndo={undo}
           onRedo={redo}
-          onExportCSV={exportAnnotationsToCSV}
+          onExportSelectedColumns={exportSelectedColumnsToCSV}
+          onExportAllColumns={exportAllColumnsToCSV}
           historyIndex={historyIndex}
           historyLength={history.length}
           autoSaveEnabled={false}
