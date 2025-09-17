@@ -217,6 +217,7 @@ export class CSVImportsAPI {
   ): Promise<PatchAnnotationResponse> {
     return this.patchCSVRowData(csvImportId, rowIndex, {
       processed: true,
+      completed: true,
       completedAt: new Date().toISOString()
     });
   }

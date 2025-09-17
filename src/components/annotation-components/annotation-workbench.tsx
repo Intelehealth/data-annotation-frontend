@@ -496,10 +496,26 @@ export function AnnotationWorkbench({
         rows: exportRows,
       };
 
+      // Generate clean filename with IST timestamp
+      const istTime = new Date().toLocaleString('en-CA', { 
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).replace(/[, ]/g, '_').replace(/:/g, '-');
+      const baseFileName = csvImport.originalFileName 
+        ? csvImport.originalFileName.replace(/\.(csv|xlsx|xls)$/i, '') 
+        : 'data';
+      const cleanFileName = `selected_columns_${baseFileName}_${istTime}.csv`;
+
       // Export using helper function
       exportToCsv(
         exportData,
-        `selected_columns_${csvImport.fileName || 'data'}.csv`,
+        cleanFileName,
         {
           cleanHtml: true,
           showSuccess: true,
@@ -594,10 +610,26 @@ export function AnnotationWorkbench({
         rows: exportRows,
       };
 
+      // Generate clean filename with IST timestamp
+      const istTime = new Date().toLocaleString('en-CA', { 
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).replace(/[, ]/g, '_').replace(/:/g, '-');
+      const baseFileName = csvImport.originalFileName 
+        ? csvImport.originalFileName.replace(/\.(csv|xlsx|xls)$/i, '') 
+        : 'data';
+      const cleanFileName = `all_columns_${baseFileName}_${istTime}.csv`;
+
       // Export using helper function
       exportToCsv(
         exportData,
-        `all_columns_${csvImport.fileName || 'data'}.csv`,
+        cleanFileName,
         {
           cleanHtml: true,
           showSuccess: true,
