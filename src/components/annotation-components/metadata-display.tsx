@@ -9,6 +9,7 @@ import {
   GripVertical,
   Eye,
   Volume2,
+  ArrowLeft,
 } from 'lucide-react';
 import { ImageThumbnails } from './image-thumbnails';
 import { cn } from '@/lib/utils';
@@ -45,6 +46,7 @@ interface MetadataDisplayProps {
   onToggleTextExpansion: (fieldName: string) => void;
   onOpenImageOverlay: (imageUrls: string[], startIndex?: number) => void;
   onOpenAudioOverlay: (audioUrl: string) => void;
+  onNavigateBack: () => void;
 }
 
 
@@ -96,10 +98,23 @@ export function MetadataDisplay({
   onToggleTextExpansion,
   onOpenImageOverlay,
   onOpenAudioOverlay,
+  onNavigateBack,
 }: MetadataDisplayProps) {
   return (
     <div className="w-1/2 border-r border-gray-200 bg-white flex flex-col">
-      <div className="p-4 border-b border-gray-100">
+      {/* Navigation Header */}
+      <div className="p-3">
+          <Button
+            onClick={onNavigateBack}
+            className="bg-black hover:bg-gray-800 text-white font-medium px-4 py-2"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Dataset
+          </Button>
+      </div>
+
+      {/* Metadata Header */}
+      <div className="p-4 pt-1 border-b border-gray-100">
         <h2 className="text-lg font-semibold text-gray-900">
           Metadata - Row {metadata.rowIndex !== undefined ? metadata.rowIndex + 1 : 'N/A'}
         </h2>
@@ -158,7 +173,10 @@ export function MetadataDisplay({
                   <div className="flex space-x-2">
                     <Button
                       size="sm"
-                      onClick={() => onSaveIndividualField(field.csvColumnName, metadata[field.csvColumnName] || '')}
+                      onClick={() => {
+                        onSaveIndividualField(field.csvColumnName, metadata[field.csvColumnName] || '');
+                        onCancelEdit();
+                      }}
                       className="bg-blue-600 hover:bg-blue-700"
                     >
                       Save

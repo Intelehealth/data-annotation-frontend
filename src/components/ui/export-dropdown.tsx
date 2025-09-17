@@ -36,11 +36,10 @@ export function ExportDropdown({ options, disabled = false }: ExportDropdownProp
 
   return (
     <Select value={selectedValue} onValueChange={handleValueChange} disabled={disabled}>
-      <SelectTrigger className="w-full border-green-600 text-green-600 hover:bg-green-50">
-        <div className="flex items-center">
-          <FileText className="h-4 w-4 mr-2" />
-          <span>Export CSV</span>
-          <ChevronDown className="h-4 w-4 ml-2" />
+      <SelectTrigger className="w-full bg-green-600 hover:bg-green-700 text-white border-green-600 font-medium px-4 py-2 [&>svg]:!text-white [&>svg]:!fill-white [&>svg]:stroke-white [&>svg]:!stroke-white">
+        <div className="flex items-center text-white">
+          <FileText className="h-4 w-4 mr-2 text-white" />
+          <span className="text-white">Export CSV</span>
         </div>
       </SelectTrigger>
       <SelectContent>

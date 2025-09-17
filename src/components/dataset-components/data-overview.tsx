@@ -16,6 +16,7 @@ import {
   AlertCircle,
   Settings,
   Play,
+  RotateCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CSVImport, CSVImportsAPI } from '@/lib/api/csv-imports';
@@ -45,12 +46,21 @@ export function DataOverview({
   const [csvToDelete, setCsvToDelete] = useState<CSVImport | null>(null);
   const [hasFieldConfig, setHasFieldConfig] = useState<boolean | null>(null);
   const [checkingConfig, setCheckingConfig] = useState(false);
+  const [annotationProgress, setAnnotationProgress] = useState<Record<string, any>>({});
+  const [checkingProgress, setCheckingProgress] = useState(false);
   const { showToast } = useToast();
 
   useEffect(() => {
     loadCSVImports();
     checkFieldConfiguration();
   }, [datasetId]);
+
+  // Check annotation progress after CSV imports are loaded
+  useEffect(() => {
+    if (csvImports.length > 0) {
+      checkAnnotationProgress();
+    }
+  }, [csvImports]);
 
   const loadCSVImports = async () => {
     try {
@@ -81,6 +91,36 @@ export function DataOverview({
       setHasFieldConfig(false);
     } finally {
       setCheckingConfig(false);
+    }
+  };
+
+  const checkAnnotationProgress = async () => {
+    try {
+      setCheckingProgress(true);
+      const progressData: Record<string, any> = {};
+      
+      // Check progress for each CSV import
+      for (const csvImport of csvImports) {
+        try {
+          const resumeInfo = await CSVImportsAPI.canResumeAnnotation(csvImport._id);
+          progressData[csvImport._id] = resumeInfo;
+        } catch (error) {
+          console.error(`Error checking progress for ${csvImport._id}:`, error);
+          progressData[csvImport._id] = {
+            canResume: false,
+            lastViewedRow: 0,
+            completedRows: 0,
+            totalRows: csvImport.totalRows,
+            progressPercentage: 0
+          };
+        }
+      }
+      
+      setAnnotationProgress(progressData);
+    } catch (error) {
+      console.error('Error checking annotation progress:', error);
+    } finally {
+      setCheckingProgress(false);
     }
   };
 
@@ -429,33 +469,66 @@ export function DataOverview({
                         }`}
                       />
                     </button>
-                    <Button
-                      size="sm"
-                      onClick={() => handleStartAnnotation(csvImport)}
-                      disabled={checkingConfig}
-                      className={cn(
-                        hasFieldConfig
-                          ? 'bg-green-600 hover:bg-green-700'
-                          : 'bg-blue-600 hover:bg-blue-700',
-                      )}
-                    >
-                      {checkingConfig ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Checking...
-                        </>
-                      ) : hasFieldConfig ? (
-                        <>
-                          <Play className="h-4 w-4 mr-2" />
-                          Start Annotation
-                        </>
-                      ) : (
-                        <>
-                          <Settings className="h-4 w-4 mr-2" />
-                          Configure Fields
-                        </>
-                      )}
-                    </Button>
+                    
+                    {/* Show Resume or Start button based on progress */}
+                    {(() => {
+                      const progress = annotationProgress[csvImport._id];
+                      const canResume = progress?.canResume || false;
+                      const isLoading = checkingConfig || checkingProgress;
+                      
+                      if (canResume && hasFieldConfig) {
+                        return (
+                          <Button
+                            size="sm"
+                            onClick={() => handleStartAnnotation(csvImport)}
+                            disabled={isLoading}
+                            className="bg-orange-600 hover:bg-orange-700 text-white"
+                          >
+                            {isLoading ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Checking...
+                              </>
+                            ) : (
+                              <>
+                                <RotateCcw className="h-4 w-4 mr-2" />
+                                Resume
+                              </>
+                            )}
+                          </Button>
+                        );
+                      } else {
+                        return (
+                          <Button
+                            size="sm"
+                            onClick={() => handleStartAnnotation(csvImport)}
+                            disabled={isLoading}
+                            className={cn(
+                              hasFieldConfig
+                                ? 'bg-green-600 hover:bg-green-700'
+                                : 'bg-blue-600 hover:bg-blue-700',
+                            )}
+                          >
+                            {isLoading ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Checking...
+                              </>
+                            ) : hasFieldConfig ? (
+                              <>
+                                <Play className="h-4 w-4 mr-2" />
+                                Start Annotation
+                              </>
+                            ) : (
+                              <>
+                                <Settings className="h-4 w-4 mr-2" />
+                                Configure Fields
+                              </>
+                            )}
+                          </Button>
+                        );
+                      }
+                    })()}
                   </div>
                 </div>
               </div>

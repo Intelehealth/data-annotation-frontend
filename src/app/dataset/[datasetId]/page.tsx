@@ -135,25 +135,15 @@ export default function DatasetDetailPage() {
               <CardContent>
                 <DatasetUploadComponent
                   datasetId={datasetId}
-                  onFilesSelected={(files) => {
-                    console.log('Files selected:', files);
-                  }}
-                  onUploadComplete={(assets) => {
-                    console.log('Upload complete:', assets);
-                    // Refresh the data overview to show new uploads
-                    setRefreshTrigger((prev) => prev + 1);
-                    // Optionally switch back to overview to see the new upload
-                    setTimeout(() => setActiveTab('overview'), 1000);
-                  }}
                   onCSVUploaded={(csvImportId, fileName, totalRows) => {
                     console.log('CSV uploaded:', {
                       csvImportId,
                       fileName,
                       totalRows,
                     });
-                    // Refresh the data overview to show new uploads
+                    // Refresh the data overview to show new CSV
                     setRefreshTrigger((prev) => prev + 1);
-                    // Optionally switch back to overview to see the new upload
+                    // Optionally switch back to overview to see the new CSV
                     setTimeout(() => setActiveTab('overview'), 1000);
                   }}
                 />

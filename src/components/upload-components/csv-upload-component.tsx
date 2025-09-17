@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Upload,
@@ -54,6 +54,13 @@ export function CSVUploadComponent({
   const { showToast } = useToast();
   const router = useRouter();
 
+  // Auto-preview when a file is selected
+  useEffect(() => {
+    if (selectedFile && !csvPreview) {
+      previewCSV();
+    }
+  }, [selectedFile]);
+
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -91,6 +98,11 @@ export function CSVUploadComponent({
     setCSVPreview(null);
     setHeaderValidation(null);
     setUploadProgress(0);
+    // Reset the file input value so the same file can be selected again
+    const fileInput = document.getElementById('csvFileInput') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = '';
+    }
   };
 
   const handleUpload = async () => {
@@ -352,19 +364,20 @@ export function CSVUploadComponent({
 
   return (
     <div className={cn('space-y-6', className)}>
-      {/* Upload Area */}
-      <div
-        className={cn(
-          'border-2 border-dashed rounded-lg p-6 text-center transition-all duration-200 cursor-pointer',
-          isDragOver
-            ? 'border-blue-400 bg-blue-50 scale-105'
-            : 'border-gray-300 hover:border-blue-300 hover:bg-gray-50',
-        )}
-        onDrop={handleFileDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onClick={() => document.getElementById('csvFileInput')?.click()}
-      >
+      {/* Upload Area - Only show when no file is selected */}
+      {!selectedFile && (
+        <div
+          className={cn(
+            'border-2 border-dashed rounded-lg p-6 text-center transition-all duration-200 cursor-pointer',
+            isDragOver
+              ? 'border-blue-400 bg-blue-50 scale-105'
+              : 'border-gray-300 hover:border-blue-300 hover:bg-gray-50',
+          )}
+          onDrop={handleFileDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onClick={() => document.getElementById('csvFileInput')?.click()}
+        >
         <div className="flex flex-col items-center space-y-3">
           <div
             className={cn(
@@ -405,14 +418,17 @@ export function CSVUploadComponent({
           </Button>
         </div>
 
-        <input
-          id="csvFileInput"
-          type="file"
-          accept=".csv,.xlsx,.xls"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
-      </div>
+        </div>
+      )}
+
+      {/* Hidden file input - always present */}
+      <input
+        id="csvFileInput"
+        type="file"
+        accept=".csv,.xlsx,.xls"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
 
       {/* Selected File */}
       {selectedFile && (

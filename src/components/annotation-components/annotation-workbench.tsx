@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -75,6 +76,7 @@ export function AnnotationWorkbench({
 }: AnnotationWorkbenchProps) {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [currentTaskIndex, setCurrentTaskIndex] = useState(0);
   const [metadata, setMetadata] = useState<Record<string, any>>({});
@@ -273,6 +275,39 @@ export function AnnotationWorkbench({
 
         console.log('Tasks created:', taskData.length, 'tasks');
         setTasks(taskData);
+
+        // Load progress and apply completion status
+        try {
+          console.log('Loading annotation progress...');
+          const progress = await CSVImportsAPI.getDetailedProgress(csvImportId);
+          console.log('Progress loaded:', progress);
+
+          // Apply completion status to tasks
+          const updatedTasks = taskData.map(task => {
+            const rowStatus = progress.rowStatuses.find((rs: any) => rs.rowIndex === task.rowIndex);
+            return {
+              ...task,
+              status: rowStatus?.completed ? 'completed' as const : 'pending' as const
+            };
+          });
+          setTasks(updatedTasks);
+
+          // Set current task index to resume position
+          if (progress.lastViewedRow > 0 && progress.lastViewedRow < taskData.length) {
+            setCurrentTaskIndex(progress.lastViewedRow);
+            console.log(`Resuming from row ${progress.lastViewedRow + 1}`);
+          } else {
+            // Find first incomplete row
+            const firstIncompleteIndex = updatedTasks.findIndex(task => task.status !== 'completed');
+            if (firstIncompleteIndex >= 0) {
+              setCurrentTaskIndex(firstIncompleteIndex);
+              console.log(`Starting from first incomplete row ${firstIncompleteIndex + 1}`);
+            }
+          }
+        } catch (progressError) {
+          console.error('Error loading progress:', progressError);
+          // Continue without progress if it fails
+        }
 
         // Initialize new column data for annotation fields
         if (annotationConfig && annotationConfig.annotationFields.length > 0) {
@@ -633,10 +668,27 @@ export function AnnotationWorkbench({
   }, [history, historyIndex]);
 
   const navigateTask = (direction: 'prev' | 'next') => {
+    let newIndex = currentTaskIndex;
+    
     if (direction === 'prev' && currentTaskIndex > 0) {
-      setCurrentTaskIndex((prev) => prev - 1);
+      newIndex = currentTaskIndex - 1;
     } else if (direction === 'next' && currentTaskIndex < tasks.length - 1) {
-      setCurrentTaskIndex((prev) => prev + 1);
+      newIndex = currentTaskIndex + 1;
+    }
+    
+    if (newIndex !== currentTaskIndex) {
+      setCurrentTaskIndex(newIndex);
+      
+      // Update last viewed row in backend
+      if (csvImportId) {
+        CSVImportsAPI.updateAnnotationProgress(
+          csvImportId, 
+          newIndex, 
+          tasks.filter(t => t.status === 'completed').length
+        ).catch(error => {
+          console.error('Error updating navigation progress:', error);
+        });
+      }
     }
   };
 
@@ -1044,6 +1096,54 @@ export function AnnotationWorkbench({
     }
   }, [csvImportId, annotationConfig]);
 
+  // Navigation handler
+  const handleNavigateBack = useCallback(() => {
+    router.push(`/dataset/${datasetId}`);
+  }, [router, datasetId]);
+
+  // DONE handler - redirect to datasets page
+  const handleDone = useCallback(() => {
+    router.push('/dataset');
+  }, [router]);
+
+  // Mark row as completed with backend persistence
+  const handleMarkAsCompleted = useCallback(async (rowIndex: number) => {
+    if (!csvImportId) return;
+    
+    try {
+      // Update local state immediately
+      setTasks(prev => prev.map(task => 
+        task.rowIndex === rowIndex 
+          ? { ...task, status: 'completed' as const, updatedAt: new Date() }
+          : task
+      ));
+      
+      // Save to backend
+      await CSVImportsAPI.markRowCompleted(csvImportId, rowIndex);
+      
+      // Update progress tracking
+      const completedCount = tasks.filter(t => t.status === 'completed' || t.rowIndex === rowIndex).length;
+      await CSVImportsAPI.updateAnnotationProgress(csvImportId, rowIndex, completedCount);
+      
+      console.log(`Marked row ${rowIndex} as completed and saved to backend`);
+      
+    } catch (error) {
+      console.error('Error marking row as completed:', error);
+      // Revert local state on error
+      setTasks(prev => prev.map(task => 
+        task.rowIndex === rowIndex 
+          ? { ...task, status: 'pending' as const }
+          : task
+      ));
+      
+      showToast({
+        type: 'error',
+        title: 'Save Failed',
+        description: 'Failed to save completion status. Please try again.',
+      });
+    }
+  }, [csvImportId, tasks, showToast]);
+
   const annotatedTasks = tasks.filter(
     (task) => task.status === 'completed',
   );
@@ -1151,7 +1251,7 @@ export function AnnotationWorkbench({
           audioOverlay={audioOverlay}
           onMetadataChange={setMetadata}
           onDragStart={handleDragStart}
-                onDragOver={handleDragOver}
+          onDragOver={handleDragOver}
           onDrop={handleDrop}
           onEditField={handleEditField}
           onSaveField={handleSaveField}
@@ -1160,6 +1260,7 @@ export function AnnotationWorkbench({
           onToggleTextExpansion={toggleTextExpansion}
           onOpenImageOverlay={openImageOverlay}
           onOpenAudioOverlay={openAudioOverlay}
+          onNavigateBack={handleNavigateBack}
         />
 
         {/* Right Panel: New Column Data Entry */}
@@ -1168,15 +1269,10 @@ export function AnnotationWorkbench({
           newColumnData={newColumnData}
           onNewColumnChange={handleNewColumnChange}
           onSaveAllNewColumnData={saveAllNewColumnData}
-          onUndo={undo}
-          onRedo={redo}
           onExportSelectedColumns={exportSelectedColumnsToCSV}
           onExportAllColumns={exportAllColumnsToCSV}
-          historyIndex={historyIndex}
-          historyLength={history.length}
-          autoSaveEnabled={false}
+          onDone={handleDone}
           isSaving={isSaving}
-          lastSavedTime={lastSavedTime}
         />
               </div>
 
@@ -1186,6 +1282,7 @@ export function AnnotationWorkbench({
         currentTaskIndex={currentTaskIndex}
         onNavigateTask={navigateTask}
         onJumpToRow={jumpToRow}
+        onMarkAsCompleted={handleMarkAsCompleted}
       />
 
       {/* Image Overlay */}

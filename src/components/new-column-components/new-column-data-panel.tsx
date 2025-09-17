@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Save, Undo, Redo } from 'lucide-react';
+import { Save, Download, CheckCircle } from 'lucide-react';
 import { AnnotationField, AnnotationConfig } from '@/lib/api/csv-imports';
 import { ExportDropdown, ExportOption } from '@/components/ui/export-dropdown';
 
@@ -17,15 +17,10 @@ interface NewColumnDataPanelProps {
   newColumnData: NewColumnData;
   onNewColumnChange: (fieldName: string, value: string) => void;
   onSaveAllNewColumnData: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
   onExportSelectedColumns: () => void;
   onExportAllColumns: () => void;
-  historyIndex: number;
-  historyLength: number;
-  autoSaveEnabled: boolean;
+  onDone: () => void;
   isSaving: boolean;
-  lastSavedTime: Date | null;
 }
 
 export function NewColumnDataPanel({
@@ -33,15 +28,10 @@ export function NewColumnDataPanel({
   newColumnData,
   onNewColumnChange,
   onSaveAllNewColumnData,
-  onUndo,
-  onRedo,
   onExportSelectedColumns,
   onExportAllColumns,
-  historyIndex,
-  historyLength,
-  autoSaveEnabled,
+  onDone,
   isSaving,
-  lastSavedTime,
 }: NewColumnDataPanelProps) {
   const annotationFields = annotationConfig?.annotationFields.filter(
     (field) => field.isNewColumn || field.isAnnotationField
@@ -66,12 +56,30 @@ export function NewColumnDataPanel({
   return (
     <div className="w-1/2 bg-white flex flex-col">
       <div className="p-4 border-b border-gray-100">
-        <h2 className="text-lg font-semibold text-gray-900">
-          New Column Data
-        </h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Enter annotation values for the new columns
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              New Column Data
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Enter annotation values for the new columns
+            </p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <ExportDropdown 
+              options={exportOptions}
+              disabled={isSaving}
+            />
+            <Button
+              onClick={onDone}
+              disabled={isSaving}
+              className="bg-green-600 hover:bg-green-700 text-white font-medium px-4 py-2"
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              DONE
+            </Button>
+          </div>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -107,61 +115,16 @@ export function NewColumnDataPanel({
 
       {/* Save Controls */}
       <div className="p-4 border-t border-gray-100">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onUndo}
-              disabled={historyIndex <= 0}
-            >
-              <Undo className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onRedo}
-              disabled={historyIndex >= historyLength - 1}
-            >
-              <Redo className="h-4 w-4" />
-            </Button>
-          </div>
-
+        <div className="flex justify-end">
           <Button
             size="sm"
             onClick={onSaveAllNewColumnData}
             disabled={isSaving}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2"
           >
             <Save className="h-4 w-4 mr-2" />
             {isSaving ? 'Saving...' : 'Save New Column Data'}
           </Button>
-        </div>
-
-        <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-          <span>Auto-save: {autoSaveEnabled ? 'On (5s)' : 'Off'}</span>
-          <div className="flex items-center space-x-2">
-            {isSaving ? (
-              <div className="flex items-center space-x-1 text-blue-600">
-                <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                <span>Saving...</span>
-              </div>
-            ) : lastSavedTime ? (
-              <span className="text-green-600">
-                Last saved: {lastSavedTime.toLocaleTimeString()}
-              </span>
-            ) : (
-              <span>Not saved yet</span>
-            )}
-          </div>
-        </div>
-
-        {/* Export CSV Dropdown */}
-        <div className="pt-2 border-t border-gray-100">
-          <ExportDropdown 
-            options={exportOptions}
-            disabled={isSaving}
-          />
         </div>
       </div>
     </div>
