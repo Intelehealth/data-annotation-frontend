@@ -315,6 +315,14 @@ export function AnnotationWorkbench({
 
   const currentTask = tasks[currentTaskIndex];
 
+  // Update metadata when current task changes
+  useEffect(() => {
+    if (currentTask && currentTask.metadata) {
+      console.log('Updating metadata for task:', currentTask.rowIndex, currentTask.metadata);
+      setMetadata(currentTask.metadata);
+    }
+  }, [currentTask]);
+
   // Load annotations for current task
   useEffect(() => {
     const loadAnnotations = async () => {
@@ -624,6 +632,14 @@ export function AnnotationWorkbench({
     }
   }, [history, historyIndex]);
 
+  const navigateTask = (direction: 'prev' | 'next') => {
+    if (direction === 'prev' && currentTaskIndex > 0) {
+      setCurrentTaskIndex((prev) => prev - 1);
+    } else if (direction === 'next' && currentTaskIndex < tasks.length - 1) {
+      setCurrentTaskIndex((prev) => prev + 1);
+    }
+  };
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -652,19 +668,12 @@ export function AnnotationWorkbench({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
+  }, [undo, redo, navigateTask]);
 
-  const navigateTask = (direction: 'prev' | 'next') => {
-    if (direction === 'prev' && currentTaskIndex > 0) {
-      setCurrentTaskIndex((prev) => prev - 1);
-    } else if (direction === 'next' && currentTaskIndex < tasks.length - 1) {
-      setCurrentTaskIndex((prev) => prev + 1);
-    }
-  };
-
-  const jumpToRow = (rowIndex: number) => {
-    const taskIndex = tasks.findIndex(task => task.rowIndex === rowIndex);
-    if (taskIndex !== -1) {
+  const jumpToRow = (rowNumber: number) => {
+    // Convert 1-based row number to 0-based task index
+    const taskIndex = rowNumber - 1;
+    if (taskIndex >= 0 && taskIndex < tasks.length) {
       setCurrentTaskIndex(taskIndex);
     }
   };
