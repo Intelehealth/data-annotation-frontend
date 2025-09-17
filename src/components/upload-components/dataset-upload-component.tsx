@@ -38,7 +38,7 @@ export function DatasetUploadComponent({
   onCSVUploaded,
   className,
 }: DatasetUploadComponentProps) {
-  const [uploadType, setUploadType] = useState<'files' | 'csv'>('files');
+  const [uploadType, setUploadType] = useState<'files' | 'csv'>('csv');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -225,18 +225,6 @@ export function DatasetUploadComponent({
       {/* Upload Type Tabs */}
       <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
         <button
-          onClick={() => handleUploadTypeChange('files')}
-          className={cn(
-            'flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
-            uploadType === 'files'
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-600 hover:text-gray-900',
-          )}
-        >
-          <FileText className="h-4 w-4" />
-          <span>Files</span>
-        </button>
-        <button
           onClick={() => handleUploadTypeChange('csv')}
           className={cn(
             'flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
@@ -247,6 +235,18 @@ export function DatasetUploadComponent({
         >
           <Table className="h-4 w-4" />
           <span>CSV</span>
+        </button>
+        <button
+          onClick={() => handleUploadTypeChange('files')}
+          className={cn(
+            'flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
+            uploadType === 'files'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900',
+          )}
+        >
+          <FileText className="h-4 w-4" />
+          <span>Files</span>
         </button>
       </div>
 

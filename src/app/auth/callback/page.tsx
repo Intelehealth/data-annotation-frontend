@@ -16,6 +16,14 @@ export default function AuthCallbackPage() {
       try {
         const urlParams = new URLSearchParams(window.location.search);
         const token = urlParams.get('token');
+        const error = urlParams.get('error');
+
+        if (error === 'oauth_failed') {
+          setStatus('error');
+          setMessage('OAuth authentication failed. Please try again.');
+          setTimeout(() => router.push('/login'), 3000);
+          return;
+        }
 
         if (!token) {
           setStatus('error');
@@ -52,14 +60,11 @@ export default function AuthCallbackPage() {
 
           setTimeout(() => router.push('/dashboard'), 1500);
         } catch (jwtError) {
-          console.error('JWT decode error:', jwtError);
-          throw new Error('Failed to decode authentication token');
+          throw new Error('AUTH_TOKEN_INVALID');
         }
       } catch (error) {
-        console.error('Auth callback error:', error);
         setStatus('error');
         setMessage('Authentication failed. Redirecting to login...');
-
         setTimeout(() => router.push('/login'), 3000);
       }
     };
