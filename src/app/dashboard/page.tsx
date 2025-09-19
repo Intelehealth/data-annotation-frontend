@@ -65,7 +65,7 @@ export default function Dashboard() {
         const [statsData, datasetsData, activitiesData] = await Promise.all([
           dashboardAPI.getStats(),
           dashboardAPI.getRecentDatasets(4),
-          dashboardAPI.getActivityFeed(10),
+          dashboardAPI.getActivityFeed(5),
         ]);
 
         setStats(statsData);
@@ -90,7 +90,7 @@ export default function Dashboard() {
       const [statsData, datasetsData, activitiesData] = await Promise.all([
         dashboardAPI.getStats(),
         dashboardAPI.getRecentDatasets(4),
-        dashboardAPI.getActivityFeed(10),
+        dashboardAPI.getActivityFeed(5),
       ]);
 
       setStats(statsData);
@@ -174,7 +174,7 @@ export default function Dashboard() {
         {/* Recent Datasets */}
         <div>
           <Link href="/dataset">
-            <Card className="cursor-pointer hover:shadow-md transition-shadow">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow h-full flex flex-col">
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <Folder className="h-5 w-5" />
@@ -184,7 +184,7 @@ export default function Dashboard() {
                   Your most recently created datasets
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex-1 flex flex-col">
                 <div className="space-y-4">
                   {recentDatasets.length > 0 ? (
                     recentDatasets.map((dataset) => (
@@ -245,7 +245,7 @@ export default function Dashboard() {
 
         {/* Recent Activity */}
         <div>
-          <Card>
+          <Card className="h-full flex flex-col">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <span>Recent Activity</span>
@@ -254,7 +254,7 @@ export default function Dashboard() {
                 Latest updates across your projects
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1 flex flex-col">
               <ActivityTimeline activities={recentActivities} />
             </CardContent>
           </Card>

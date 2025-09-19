@@ -22,6 +22,7 @@ import {
 import { cn } from '@/lib/utils';
 import { datasetsAPI, DatasetResponse } from '@/lib/api/datasets';
 import { DeleteConfirmationDialog } from './delete-confirmation-dialog';
+import { DatasetPagination } from './dataset-pagination';
 import { useToast } from '@/components/ui/toast';
 
 interface DatasetListProps {
@@ -50,6 +51,10 @@ export function DatasetList({
   const [datasetToDelete, setDatasetToDelete] =
     useState<DatasetResponse | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 6;
 
   useEffect(() => {
     loadDatasets();
@@ -62,6 +67,8 @@ export function DatasetList({
       // Use backend search API for better performance
       searchDatasets(searchQuery);
     }
+    // Reset to first page when search changes
+    setCurrentPage(1);
   }, [searchQuery]);
 
   const loadDatasets = async () => {
@@ -136,6 +143,17 @@ export function DatasetList({
     router.push(`/dataset/${dataset._id}`);
   };
 
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  // Get current page datasets
+  const getCurrentPageDatasets = () => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredDatasets.slice(startIndex, endIndex);
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -175,7 +193,7 @@ export function DatasetList({
   }
 
   return (
-    <div className={cn('space-y-6', className)}>
+    <div className={cn('space-y-6 min-h-0', className)}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -223,8 +241,9 @@ export function DatasetList({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredDatasets.map((dataset) => (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {getCurrentPageDatasets().map((dataset) => (
             <Card
               key={dataset._id}
               className="hover:shadow-lg transition-shadow cursor-pointer"
@@ -272,8 +291,18 @@ export function DatasetList({
                 </div>
               </CardContent>
             </Card>
-          ))}
-        </div>
+            ))}
+          </div>
+          
+          {/* Pagination */}
+          <DatasetPagination
+            totalItems={filteredDatasets.length}
+            currentPage={currentPage}
+            itemsPerPage={itemsPerPage}
+            onPageChange={handlePageChange}
+            className="mt-1"
+          />
+        </>
       )}
 
       {/* Delete Confirmation Dialog */}
