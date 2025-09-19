@@ -235,7 +235,7 @@ export function DataOverview({
   if (!loading && csvImports.length === 0) {
     return (
       <div className={cn('space-y-6', className)}>
-        {/* Header with Upload Button */}
+        {/* Header with Upload and Configure Fields Buttons */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Data Overview</h1>
@@ -243,13 +243,22 @@ export function DataOverview({
               Manage and monitor your uploaded data files
             </p>
           </div>
-          <Button
-            onClick={onNavigateToUpload}
-            className="flex items-center gap-2"
-          >
-            <Upload className="h-4 w-4" />
-            Upload Data
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={onNavigateToFieldConfig}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Settings className="h-4 w-4" />
+              Configure Fields
+            </Button>
+            <Button
+              onClick={onNavigateToUpload}
+              className="flex items-center gap-2"
+            >
+              <Upload className="h-4 w-4" />
+              Upload Data
+            </Button>
+          </div>
         </div>
 
         {/* Empty State */}
@@ -333,13 +342,22 @@ export function DataOverview({
               Manage and monitor your uploaded data files
             </p>
           </div>
-          <Button
-            onClick={onNavigateToUpload}
-            className="flex items-center gap-2"
-          >
-            <Upload className="h-4 w-4" />
-            Upload Data
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={onNavigateToFieldConfig}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Settings className="h-4 w-4" />
+              Configure Fields
+            </Button>
+            <Button
+              onClick={onNavigateToUpload}
+              className="flex items-center gap-2"
+            >
+              <Upload className="h-4 w-4" />
+              Upload Data
+            </Button>
+          </div>
         </div>
 
         <div className="flex items-center justify-center py-12">
@@ -361,13 +379,22 @@ export function DataOverview({
               Manage and monitor your uploaded data files
             </p>
           </div>
-          <Button
-            onClick={onNavigateToUpload}
-            className="flex items-center gap-2"
-          >
-            <Upload className="h-4 w-4" />
-            Upload Data
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={onNavigateToFieldConfig}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Settings className="h-4 w-4" />
+              Configure Fields
+            </Button>
+            <Button
+              onClick={onNavigateToUpload}
+              className="flex items-center gap-2"
+            >
+              <Upload className="h-4 w-4" />
+              Upload Data
+            </Button>
+          </div>
         </div>
 
         <Card className="border-red-200 bg-red-50">
@@ -404,13 +431,22 @@ export function DataOverview({
             Manage and monitor your uploaded data files
           </p>
         </div>
-        <Button
-          onClick={onNavigateToUpload}
-          className="flex items-center gap-2"
-        >
-          <Upload className="h-4 w-4" />
-          Upload Data
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={onNavigateToFieldConfig}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
+          >
+            <Settings className="h-4 w-4" />
+            Configure Fields
+          </Button>
+          <Button
+            onClick={onNavigateToUpload}
+            className="flex items-center gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            Upload Data
+          </Button>
+        </div>
       </div>
 
       {/* CSV Imports List */}
@@ -497,36 +533,29 @@ export function DataOverview({
                             )}
                           </Button>
                         );
-                      } else {
+                      } else if (hasFieldConfig) {
                         return (
                           <Button
                             size="sm"
                             onClick={() => handleStartAnnotation(csvImport)}
                             disabled={isLoading}
-                            className={cn(
-                              hasFieldConfig
-                                ? 'bg-green-600 hover:bg-green-700'
-                                : 'bg-blue-600 hover:bg-blue-700',
-                            )}
+                            className="bg-green-600 hover:bg-green-700 text-white"
                           >
                             {isLoading ? (
                               <>
                                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                 Checking...
                               </>
-                            ) : hasFieldConfig ? (
+                            ) : (
                               <>
                                 <Play className="h-4 w-4 mr-2" />
                                 Start Annotation
                               </>
-                            ) : (
-                              <>
-                                <Settings className="h-4 w-4 mr-2" />
-                                Configure Fields
-                              </>
                             )}
                           </Button>
                         );
+                      } else {
+                        return null;
                       }
                     })()}
                   </div>
@@ -534,8 +563,34 @@ export function DataOverview({
               </div>
             ))}
           </div>
+          
+          {/* Configure Fields Button - Centered - Only show when fields are not configured */}
+          {!hasFieldConfig && (
+            <div className="flex justify-center pt-6 border-t border-gray-100">
+              <div className="text-center space-y-3">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-900 mb-1">
+                    Ready to Start Annotating?
+                  </h4>
+                  <p className="text-xs text-gray-600 mb-3">
+                    Configure your annotation fields first
+                  </p>
+                </div>
+                <div className="flex justify-center">
+                  <Button
+                    onClick={onNavigateToFieldConfig}
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Configure Fields
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
+
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog

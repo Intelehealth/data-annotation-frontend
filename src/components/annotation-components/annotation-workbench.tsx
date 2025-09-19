@@ -941,71 +941,104 @@ export function AnnotationWorkbench({
     ) || [];
 
     const dataToSave: Record<string, any> = {};
-    let hasChanges = false;
+    let hasActualData = false;
 
-    // Collect all new column data that has values
+    // Collect only fields that have actual data
     for (const field of annotationFields) {
       const fieldValue = newColumnData[field.fieldName];
       if (fieldValue !== undefined && fieldValue !== null && fieldValue.trim() !== '') {
         dataToSave[field.fieldName] = fieldValue;
-        hasChanges = true;
+        hasActualData = true;
       }
-    }
-
-    if (!hasChanges) {
-      showToast({
-        type: 'error',
-        title: 'No Data to Save',
-        description: 'Please enter data in at least one field before saving.',
-      });
-      return;
     }
 
     setIsSaving(true);
     try {
-      const response = await CSVImportsAPI.patchCSVRowData(
-        csvImportId,
-        currentTask.rowIndex,
-        dataToSave
-      );
+      let response = null;
+      
+      // Only save data if there's actual data to save
+      if (hasActualData) {
+        response = await CSVImportsAPI.patchCSVRowData(
+          csvImportId,
+          currentTask.rowIndex,
+          dataToSave
+        );
 
-      if (response.success && response.data) {
-        // Update local CSV import data
-        if (csvImport && csvImport.rowData) {
-          const updatedRow = csvImport.rowData.find(row => row.rowIndex === currentTask.rowIndex);
-          if (updatedRow) {
-            Object.entries(dataToSave).forEach(([fieldName, value]) => {
-              updatedRow.data[fieldName] = value;
-            });
-            updatedRow.processed = true;
-            setCsvImport({ ...csvImport });
+        if (response.success && response.data) {
+          // Update local CSV import data
+          if (csvImport && csvImport.rowData) {
+            const updatedRow = csvImport.rowData.find(row => row.rowIndex === currentTask.rowIndex);
+            if (updatedRow) {
+              Object.entries(dataToSave).forEach(([fieldName, value]) => {
+                updatedRow.data[fieldName] = value;
+              });
+              updatedRow.processed = true;
+              setCsvImport({ ...csvImport });
+            }
           }
         }
+      }
 
-        // Update current task metadata to immediately reflect the changes
-        const updatedTask = {
-          ...currentTask,
-          metadata: {
-            ...currentTask.metadata,
-            ...dataToSave
-          },
-          status: 'completed' as const,
-          updatedAt: new Date(),
-        };
+      // Always mark row as completed (regardless of whether data was saved)
+      const updatedTask = {
+        ...currentTask,
+        metadata: {
+          ...currentTask.metadata,
+          ...dataToSave
+        },
+        status: 'completed' as const,
+        updatedAt: new Date(),
+      };
 
-        // Update the tasks array
-        setTasks(prev => prev.map(task => 
-          task.id === currentTask.id ? updatedTask : task
-        ));
+      // Update the tasks array
+      setTasks(prev => prev.map(task => 
+        task.id === currentTask.id ? updatedTask : task
+      ));
 
-        setLastSavedTime(new Date());
-        setPendingChanges({});
+      // Mark row as completed in backend
+      try {
+        await CSVImportsAPI.markRowCompleted(csvImportId, currentTask.rowIndex);
         
+        // Update progress tracking
+        const completedCount = tasks.filter(t => t.status === 'completed' || t.rowIndex === currentTask.rowIndex).length;
+        await CSVImportsAPI.updateAnnotationProgress(csvImportId, currentTask.rowIndex, completedCount);
+        
+        console.log(`Row ${currentTask.rowIndex} marked as completed and saved to backend`);
+      } catch (completionError) {
+        console.error('Error marking row as completed in backend:', completionError);
+        // Don't show error toast for completion failure, as the main action (save data) succeeded
+      }
+
+      setLastSavedTime(new Date());
+      setPendingChanges({});
+      
+      // Check if this is the last row
+      const isLastRow = currentTaskIndex >= tasks.length - 1;
+
+      // Show appropriate toast message based on whether data was saved and if it's the last row
+      if (hasActualData && response?.success) {
         showToast({
           type: 'success',
-          title: 'New Column Data Saved',
-          description: `Successfully saved ${response.updatedFields} field(s): ${response.changedFields.join(', ')}`,
+          title: 'Data Saved & Row Completed',
+          description: isLastRow 
+            ? `Successfully saved ${response.updatedFields} field(s). All rows completed!`
+            : `Successfully saved ${response.updatedFields} field(s). Moving to next row...`,
         });
+      } else {
+        showToast({
+          type: 'success',
+          title: 'Row Marked as Complete',
+          description: isLastRow 
+            ? 'Row completed. All rows are now complete!'
+            : 'Row completed. Moving to next row...',
+        });
+      }
+
+      // Auto-navigate to next row after successful save (only if not last row)
+      if (!isLastRow) {
+        setTimeout(() => {
+          navigateTask('next');
+        }, 1000); // Small delay to let user see the success message
       }
 
     } catch (error: any) {
@@ -1133,10 +1166,6 @@ export function AnnotationWorkbench({
     router.push(`/dataset/${datasetId}`);
   }, [router, datasetId]);
 
-  // DONE handler - redirect to datasets page
-  const handleDone = useCallback(() => {
-    router.push('/dataset');
-  }, [router]);
 
   // Mark row as completed with backend persistence
   const handleMarkAsCompleted = useCallback(async (rowIndex: number) => {
@@ -1303,8 +1332,9 @@ export function AnnotationWorkbench({
           onSaveAllNewColumnData={saveAllNewColumnData}
           onExportSelectedColumns={exportSelectedColumnsToCSV}
           onExportAllColumns={exportAllColumnsToCSV}
-          onDone={handleDone}
           isSaving={isSaving}
+          completedCount={annotatedTasks.length}
+          pendingCount={unannotatedTasks.length}
         />
               </div>
 

@@ -8,7 +8,6 @@ import {
   Upload,
   Database,
   FileText,
-  Settings,
   BarChart3,
   Tag,
   Layers,
@@ -28,7 +27,7 @@ export function DatasetSidebar({
   datasetId,
   className,
 }: DatasetSidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const datasetMenuItems = [
     {
@@ -147,22 +146,6 @@ export function DatasetSidebar({
         })}
       </nav>
 
-      {/* Dataset Settings */}
-      <div className="p-3 border-t border-gray-100">
-        <Button
-          variant="ghost"
-          className={cn(
-            'w-full justify-start text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors',
-            isCollapsed && 'justify-center px-2',
-          )}
-          title={isCollapsed ? 'Dataset Settings' : undefined}
-        >
-          <Settings className="h-4 w-4 flex-shrink-0" />
-          {!isCollapsed && (
-            <span className="ml-3 text-sm">Dataset Settings</span>
-          )}
-        </Button>
-      </div>
     </aside>
   );
 }

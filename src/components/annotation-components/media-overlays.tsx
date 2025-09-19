@@ -29,11 +29,11 @@ export function ImageOverlay({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-      <div className="relative max-w-4xl max-h-full">
+    <div className="fixed inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center z-50">
+      <div className="relative max-w-4xl max-h-full bg-white rounded-lg shadow-2xl p-4">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
+          className="absolute top-4 right-4 text-gray-600 hover:text-gray-800 z-10 bg-white/80 rounded-full p-1"
         >
           <X className="h-6 w-6" />
         </button>
@@ -51,11 +51,11 @@ export function ImageOverlay({
               size="sm"
               onClick={() => onNavigate('prev')}
               disabled={currentIndex === 0}
-              className="bg-white"
+              className="bg-white/90 hover:bg-white border-gray-300"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="px-3 py-1 bg-white rounded text-sm">
+            <span className="px-3 py-1 bg-white/90 rounded text-sm border border-gray-300">
               {currentIndex + 1} / {imageUrls.length}
             </span>
             <Button
@@ -63,7 +63,7 @@ export function ImageOverlay({
               size="sm"
               onClick={() => onNavigate('next')}
               disabled={currentIndex === imageUrls.length - 1}
-              className="bg-white"
+              className="bg-white/90 hover:bg-white border-gray-300"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>

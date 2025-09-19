@@ -129,13 +129,7 @@ export function RowFooter({
             </div>
             
             <Button
-              onClick={() => {
-                // Auto-mark current row as completed when clicking Next
-                if (onMarkAsCompleted && tasks[currentTaskIndex]?.status !== 'completed') {
-                  onMarkAsCompleted(currentTaskIndex);
-                }
-                onNavigateTask('next');
-              }}
+              onClick={() => onNavigateTask('next')}
               disabled={currentTaskIndex === tasks.length - 1}
               className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
@@ -153,6 +147,10 @@ export function RowFooter({
             <div className="flex items-center space-x-1">
               <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
               <span className="text-gray-600">{unannotatedTasks.length} pending</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <div className="w-2 h-2 bg-black rounded-full"></div>
+              <span className="text-black font-medium">{tasks.length} total</span>
             </div>
           </div>
         </div>

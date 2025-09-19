@@ -61,6 +61,13 @@ export function CSVUploadComponent({
     }
   }, [selectedFile]);
 
+  // Auto-validate headers after preview is generated
+  useEffect(() => {
+    if (csvPreview && csvPreview.totalRows > 0 && !headerValidation && selectedDatasetId) {
+      validateHeaders();
+    }
+  }, [csvPreview, headerValidation, selectedDatasetId]);
+
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -296,7 +303,7 @@ export function CSVUploadComponent({
     reader.readAsText(selectedFile);
   };
 
-  const validateHeaders = async () => {
+  const validateHeaders = async (showToasts = true) => {
     if (!selectedFile || !selectedDatasetId) return;
 
     setIsValidatingHeaders(true);
@@ -307,26 +314,30 @@ export function CSVUploadComponent({
       );
       setHeaderValidation(validation);
 
-      if (!validation.isValid) {
-        showToast({
-          type: 'error',
-          title: 'Header Validation Failed',
-          description: `Found ${validation.errors.length} header mismatch(es). Please check the details below.`,
-        });
-      } else {
-        showToast({
-          type: 'success',
-          title: 'Headers Validated',
-          description: 'CSV headers match existing files in this dataset.',
-        });
+      if (showToasts) {
+        if (!validation.isValid) {
+          showToast({
+            type: 'error',
+            title: 'Header Validation Failed',
+            description: `Found ${validation.errors.length} header mismatch(es). Please check the details below.`,
+          });
+        } else {
+          showToast({
+            type: 'success',
+            title: 'Headers Validated',
+            description: 'CSV headers match existing files in this dataset.',
+          });
+        }
       }
     } catch (error: any) {
       console.error('Header validation failed:', error);
-      showToast({
-        type: 'error',
-        title: 'Validation Error',
-        description: 'Failed to validate CSV headers. Please try again.',
-      });
+      if (showToasts) {
+        showToast({
+          type: 'error',
+          title: 'Validation Error',
+          description: 'Failed to validate CSV headers. Please try again.',
+        });
+      }
     } finally {
       setIsValidatingHeaders(false);
     }
@@ -465,7 +476,7 @@ export function CSVUploadComponent({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={validateHeaders}
+                onClick={() => validateHeaders(true)}
                 disabled={isValidatingHeaders}
                 className="h-7 px-2"
               >

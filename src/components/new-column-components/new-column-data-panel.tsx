@@ -19,8 +19,9 @@ interface NewColumnDataPanelProps {
   onSaveAllNewColumnData: () => void;
   onExportSelectedColumns: () => void;
   onExportAllColumns: () => void;
-  onDone: () => void;
   isSaving: boolean;
+  completedCount: number;
+  pendingCount: number;
 }
 
 export function NewColumnDataPanel({
@@ -30,8 +31,9 @@ export function NewColumnDataPanel({
   onSaveAllNewColumnData,
   onExportSelectedColumns,
   onExportAllColumns,
-  onDone,
   isSaving,
+  completedCount,
+  pendingCount,
 }: NewColumnDataPanelProps) {
   const annotationFields = annotationConfig?.annotationFields.filter(
     (field) => field.isNewColumn || field.isAnnotationField
@@ -53,6 +55,9 @@ export function NewColumnDataPanel({
     },
   ];
 
+  const totalCount = completedCount + pendingCount;
+  const completionPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
   return (
     <div className="w-1/2 bg-white flex flex-col">
       <div className="p-4 border-b border-gray-100">
@@ -65,19 +70,21 @@ export function NewColumnDataPanel({
               Enter annotation values for the new columns
             </p>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-4">
+             {/* Progress Indicator (clean bar + counts) */}
+             <div className="flex items-center space-x-3">
+               <span className="text-xs text-gray-500">Progress</span>
+               <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden" role="progressbar" aria-valuenow={completionPercent} aria-valuemin={0} aria-valuemax={100}>
+                 <div className="h-full bg-green-500 rounded-full" style={{ width: `${completionPercent}%` }}></div>
+               </div>
+               <span className="text-sm font-medium text-gray-700">{completionPercent}%</span>
+               <span className="text-xs text-gray-500">({completedCount}/{totalCount})</span>
+             </div>
+
             <ExportDropdown 
               options={exportOptions}
               disabled={isSaving}
             />
-            <Button
-              onClick={onDone}
-              disabled={isSaving}
-              className="bg-green-600 hover:bg-green-700 text-white font-medium px-4 py-2"
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              DONE
-            </Button>
           </div>
         </div>
       </div>
@@ -120,10 +127,10 @@ export function NewColumnDataPanel({
             size="sm"
             onClick={onSaveAllNewColumnData}
             disabled={isSaving}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2"
+            className="bg-green-600 hover:bg-green-700 text-white font-medium px-6 py-2"
           >
-            <Save className="h-4 w-4 mr-2" />
-            {isSaving ? 'Saving...' : 'Save New Column Data'}
+            <CheckCircle className="h-4 w-4 mr-2" />
+            {isSaving ? 'Completing...' : 'Complete'}
           </Button>
         </div>
       </div>
