@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { datasetsAPI, DatasetResponse } from '@/lib/api/datasets';
@@ -16,6 +16,7 @@ import { DataOverview } from '@/components/dataset-components/data-overview';
 import { DatasetSidebar } from '@/components/dataset-components/dataset-sidebar';
 import { DatasetUploadComponent } from '@/components/upload-components/dataset-upload-component';
 import { FieldConfig } from '@/components/field-config-components/field-config';
+import { DatasetSettings } from '@/components/dataset-components/dataset-settings';
 import { Sidebar } from '@/components/sidebar';
 import {
   ArrowLeft,
@@ -38,6 +39,7 @@ const datasetTypeIcons = {
 export default function DatasetDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isAuthenticated, isLoading } = useAuth();
   const [dataset, setDataset] = useState<DatasetResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,6 +54,14 @@ export default function DatasetDetailPage() {
       router.push('/login');
     }
   }, [isAuthenticated, isLoading, router]);
+
+  // Handle tab query parameter
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['overview', 'upload', 'field-configuration', 'settings'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (datasetId && isAuthenticated) {
@@ -113,10 +123,10 @@ export default function DatasetDetailPage() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">
-                  Upload Data
+                {dataset.name}
                 </h1>
                 <p className="text-gray-600 mt-1">
-                  Add new files to your dataset
+                  Add new files to this dataset.
                 </p>
               </div>
             </div>
@@ -126,7 +136,7 @@ export default function DatasetDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <Upload className="h-5 w-5 text-blue-600" />
-                  <span>Upload Files</span>
+                  <span>Upload files</span>
                 </CardTitle>
                 <CardDescription>
                   Upload CSV files or other data formats to your dataset
@@ -143,8 +153,8 @@ export default function DatasetDetailPage() {
                     });
                     // Refresh the data overview to show new CSV
                     setRefreshTrigger((prev) => prev + 1);
-                    // Optionally switch back to overview to see the new CSV
-                    setTimeout(() => setActiveTab('overview'), 1000);
+                    // Let CSVUploadComponent handle the redirection logic
+                    // No automatic tab switching here to avoid conflicts
                   }}
                 />
               </CardContent>
@@ -160,6 +170,9 @@ export default function DatasetDetailPage() {
             onNavigateToOverview={() => setActiveTab('overview')}
           />
         );
+
+      case 'settings':
+        return <DatasetSettings datasetId={datasetId} />;
 
       default:
         return (

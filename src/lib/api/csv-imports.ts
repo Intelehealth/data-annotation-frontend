@@ -39,8 +39,10 @@ export interface AnnotationField {
   fieldName: string;
   fieldType: 'text' | 'image' | 'audio';
   isRequired: boolean;
-  isMetadataField: boolean;
+  // true if it needs annotation (right panel); false if metadata (left)
   isAnnotationField: boolean;
+  // optional: whether this field is the unique primary key
+  isPrimaryKey?: boolean;
   options?: string[];
   instructions?: string;
   isNewColumn?: boolean; // true if this is a new column, not from CSV  

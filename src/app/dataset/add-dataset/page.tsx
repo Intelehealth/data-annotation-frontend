@@ -20,6 +20,10 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  Lock,
+  Globe,
+  Users,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
@@ -29,6 +33,28 @@ const datasetTypes = [
   { value: 'image', label: 'Image Dataset', icon: Image },
   { value: 'audio', label: 'Audio Dataset', icon: AudioLines },
   { value: 'multimodal', label: 'Multi-modal Dataset', icon: Database },
+];
+
+const accessTypes = [
+  {
+    value: 'private',
+    label: 'Private',
+    description: 'Only you can access this dataset',
+    icon: Lock,
+    color: 'text-gray-600',
+    bgColor: 'bg-gray-50',
+    borderColor: 'border-gray-200',
+  },
+  {
+    value: 'public',
+    label: 'Public',
+    description: 'Visible to all users',
+    icon: Globe,
+    color: 'text-blue-600',
+    bgColor: 'bg-blue-50',
+    borderColor: 'border-blue-200',
+    warning: true,
+  },
 ];
 
 export default function AddDatasetPage() {
@@ -57,10 +83,12 @@ export default function AddDatasetPage() {
       name: '',
       description: '',
       datasetType: undefined,
+      accessType: 'private',
     },
   });
 
   const selectedDatasetType = watch('datasetType');
+  const selectedAccessType = watch('accessType');
   const watchedName = watch('name');
 
   // Debounced name validation function
@@ -148,6 +176,7 @@ export default function AddDatasetPage() {
         name: data.name.trim(),
         description: data.description?.trim() || '',
         datasetType: data.datasetType,
+        accessType: data.accessType || 'private',
       });
 
       showToast({
@@ -156,10 +185,9 @@ export default function AddDatasetPage() {
         type: 'success',
       });
 
-      // Redirect to dataset page after a short delay to show the toast
       setTimeout(() => {
-        router.push('/dataset');
-      }, 1500);
+        router.push(`/dataset/${newDataset._id}?tab=upload`);
+      }, 500);
     } catch (error: any) {
       console.error('Error creating dataset:', error);
 
@@ -200,31 +228,28 @@ export default function AddDatasetPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center space-x-4 mb-8">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/dataset')}
-            className="h-10 w-10"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">
-              Create New Dataset
-            </h1>
-            <p className="text-gray-600 text-sm">
-              Set up your dataset for annotation
-            </p>
-          </div>
-        </div>
+    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+      {/* Navigation Header - Fixed to left edge */}
+      <div className="absolute top-4 left-4 z-10">
+        <Button
+          onClick={() => router.push('/dataset')}
+          className="bg-black hover:bg-gray-800 text-white font-medium px-4 py-2"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Datasets
+        </Button>
+      </div>
+      
+      <div className="max-w-2xl mx-auto w-full flex-1 flex flex-col p-4">
 
         {/* Main Form Container */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex-1 flex flex-col">
+          <div className="text-left">
+            <h1 className="text-2xl font-semibold text-gray-900 p-3">
+              Create New Dataset
+            </h1>
+          </div>
+          <form onSubmit={handleSubmit(onSubmit)} className="flex-1 flex flex-col space-y-4">
             {/* Dataset Name */}
             <div className="space-y-2">
               <Label
@@ -309,11 +334,11 @@ export default function AddDatasetPage() {
             </div>
 
             {/* Dataset Type */}
-            <div className="space-y-3">
+            <div className="space-y-2">
               <Label className="text-sm font-medium text-gray-700">
                 Dataset Type *
               </Label>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {datasetTypes.map((type) => {
                   const Icon = type.icon;
                   const isSelected = selectedDatasetType === type.value;
@@ -324,7 +349,7 @@ export default function AddDatasetPage() {
                       type="button"
                       onClick={() => setValue('datasetType', type.value as any)}
                       className={cn(
-                        'flex flex-col items-center space-y-2 p-4 rounded-lg border-2 transition-all hover:shadow-sm',
+                        'flex flex-col items-center space-y-1 p-3 rounded-lg border-2 transition-all hover:shadow-sm',
                         isSelected
                           ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm'
                           : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50',
@@ -345,11 +370,65 @@ export default function AddDatasetPage() {
               )}
             </div>
 
+            {/* Access Type */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">
+                Access Type *
+              </Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {accessTypes.map((type) => {
+                  const Icon = type.icon;
+                  const isSelected = selectedAccessType === type.value;
+
+                  return (
+                    <button
+                      key={type.value}
+                      type="button"
+                      onClick={() => setValue('accessType', type.value as any)}
+                      className={cn(
+                        'flex flex-col items-start space-y-1 p-3 rounded-lg border-2 transition-all hover:shadow-sm text-left',
+                        isSelected
+                          ? `${type.bgColor} ${type.borderColor} shadow-sm ring-2 ring-blue-500 ring-opacity-20`
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50',
+                        // Default highlight for Private
+                        type.value === 'private' && !selectedAccessType && 'bg-gray-50 border-gray-300 ring-2 ring-gray-400 ring-opacity-20'
+                      )}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <Icon className={cn('h-5 w-5', 
+                          isSelected ? type.color : 
+                          type.value === 'private' && !selectedAccessType ? 'text-gray-600' : 'text-gray-400'
+                        )} />
+                        <span className={cn('text-sm font-medium', 
+                          isSelected ? type.color : 
+                          type.value === 'private' && !selectedAccessType ? 'text-gray-700' : 'text-gray-600'
+                        )}>
+                          {type.label}
+                        </span>
+                      </div>
+                      <p className={cn('text-xs leading-relaxed',
+                        isSelected ? 'text-gray-700' : 
+                        type.value === 'private' && !selectedAccessType ? 'text-gray-600' : 'text-gray-500'
+                      )}>
+                        {type.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+              {errors.accessType && (
+                <p className="text-sm text-red-600">
+                  {errors.accessType.message}
+                </p>
+              )}
+            </div>
+
+
             {/* Information Note */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
               <div className="flex items-start space-x-2">
                 <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-blue-800">
+                <p className="text-xs text-blue-800">
                   <strong>Note:</strong> Dataset type is for organization only.
                   It doesn't affect annotation functionality - you can upload
                   any data type.
@@ -357,8 +436,11 @@ export default function AddDatasetPage() {
               </div>
             </div>
 
+            {/* Spacer to push buttons to bottom */}
+            <div className="flex-1"></div>
+
             {/* Action Buttons */}
-            <div className="flex justify-end space-x-3 pt-4">
+            <div className="flex justify-end space-x-3 pt-3 border-t border-gray-100">
               <Button
                 type="button"
                 variant="outline"

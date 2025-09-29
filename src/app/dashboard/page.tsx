@@ -154,7 +154,7 @@ export default function Dashboard() {
             <span>Refresh</span>
           </Button>
           <Link href="/dataset/add-dataset">
-            <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
+            <Button className="bg-black hover:bg-gray-800 text-white">
               <Plus className="h-4 w-4 mr-2" />
               New Dataset
             </Button>

@@ -81,8 +81,20 @@ export const authAPI = {
     password: string;
     firstName: string;
     lastName: string;
+    role?: 'user' | 'admin';
   }) => {
     const response = await jsonApi.post('/auth/register', userData);
+    return response.data;
+  },
+
+  // Register new admin user
+  registerAdmin: async (userData: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+  }) => {
+    const response = await jsonApi.post('/auth/admin/register', userData);
     return response.data;
   },
 
@@ -103,7 +115,26 @@ export const authAPI = {
 export const usersAPI = {
   // Get current user profile
   getProfile: async () => {
-    const response = await jsonApi.get('/users/');
+    const response = await jsonApi.get('/users/profile');
+    return response.data;
+  },
+
+  // Update user profile
+  updateProfile: async (profileData: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  }) => {
+    const response = await jsonApi.put('/users/profile', profileData);
+    return response.data;
+  },
+
+  // Change password
+  changePassword: async (passwordData: {
+    newPassword: string;
+    confirmPassword: string;
+  }) => {
+    const response = await jsonApi.put('/users/password', passwordData);
     return response.data;
   },
 };

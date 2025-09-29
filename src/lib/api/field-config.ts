@@ -63,7 +63,8 @@ export const fieldSelectionAPI = {
       fieldName: string;
       fieldType: 'text' | 'image' | 'audio';
       isRequired: boolean;
-      isMetadataField: boolean;
+      isAnnotationField: boolean;
+      isPrimaryKey?: boolean;
       options?: string[];
       isNewColumn?: boolean;
       newColumnId?: string;

@@ -4,10 +4,13 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export interface DatasetResponse {
   _id: string;
-  userId: string;
+  userId: string | { _id: string; firstName: string; lastName: string; email: string };
   name: string;
   description: string;
   datasetType: string;
+  accessType: 'private' | 'public' | 'shared';
+  sharedWith: { userId: string; email: string }[];
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -16,12 +19,15 @@ export interface CreateDatasetRequest {
   name: string;
   description: string;
   datasetType: string;
+  accessType?: 'private' | 'public' | 'shared';
 }
 
 export interface UpdateDatasetRequest {
   name?: string;
   description?: string;
   datasetType?: string;
+  accessType?: 'private' | 'public' | 'shared';
+  sharedWith?: { userId: string; email: string }[];
 }
 
 export const datasetsAPI = {
@@ -119,6 +125,52 @@ export const datasetsAPI = {
       },
     );
 
+    return response.data;
+  },
+
+  // Admin-only methods for managing dataset access
+  async shareWithUsers(datasetId: string, userIds: string[]): Promise<DatasetResponse> {
+    const token = localStorage.getItem('accessToken');
+    const response = await axios.post(
+      `${API_BASE_URL}/datasets/${datasetId}/share`,
+      { userIds },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+    return response.data;
+  },
+
+  async makePublic(datasetId: string): Promise<DatasetResponse> {
+    const token = localStorage.getItem('accessToken');
+    const response = await axios.patch(
+      `${API_BASE_URL}/datasets/${datasetId}/make-public`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+    return response.data;
+  },
+
+  async makePrivate(datasetId: string): Promise<DatasetResponse> {
+    const token = localStorage.getItem('accessToken');
+    const response = await axios.patch(
+      `${API_BASE_URL}/datasets/${datasetId}/make-private`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    );
     return response.data;
   },
 };

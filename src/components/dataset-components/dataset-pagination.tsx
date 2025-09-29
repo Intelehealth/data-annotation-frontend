@@ -57,7 +57,7 @@ export function DatasetPagination({
   };
 
   return (
-    <div className={cn('flex items-center justify-center', className)}>
+    <div className={cn('flex items-center justify-center pt-3', className)}>
       <div className="flex items-center space-x-2">
         <Button
           onClick={() => onPageChange(currentPage - 1)}

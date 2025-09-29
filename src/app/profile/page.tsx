@@ -18,26 +18,32 @@ const profileSchema = z
   .object({
     firstName: z.string().min(1, 'First name is required'),
     lastName: z.string().min(1, 'Last name is required'),
-    email: z.string().email('Invalid email address'),
-    currentPassword: z.string().optional(),
-    newPassword: z
-      .string()
-      .min(6, 'Password must be at least 6 characters')
-      .optional(),
+    newPassword: z.string().optional(),
     confirmPassword: z.string().optional(),
   })
   .refine(
     (data) => {
-      if (data.newPassword && !data.currentPassword) {
-        return false;
-      }
-      if (data.newPassword !== data.confirmPassword) {
+      // If passwords are provided, they must be at least 6 characters
+      if (data.newPassword && data.newPassword.length < 6) {
         return false;
       }
       return true;
     },
     {
-      message: "Passwords don't match or current password is required",
+      message: 'Password must be at least 6 characters',
+      path: ['newPassword'],
+    },
+  )
+  .refine(
+    (data) => {
+      // Only validate password match if both are provided
+      if (data.newPassword && data.confirmPassword) {
+        return data.newPassword === data.confirmPassword;
+      }
+      return true;
+    },
+    {
+      message: "Passwords don't match",
       path: ['confirmPassword'],
     },
   );
@@ -46,10 +52,9 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, updateProfile, changePassword } = useAuth();
   const { showToast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -63,8 +68,6 @@ export default function ProfilePage() {
     defaultValues: {
       firstName: user?.firstName || '',
       lastName: user?.lastName || '',
-      email: user?.email || '',
-      currentPassword: '',
       newPassword: '',
       confirmPassword: '',
     },
@@ -77,8 +80,28 @@ export default function ProfilePage() {
     setIsSubmitting(true);
 
     try {
-      // Simulate API call - replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      // Always update profile information
+      const profileUpdateResult = await updateProfile({
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: user?.email || '', // Keep the existing email, don't allow changes
+      });
+
+      if (!profileUpdateResult.success) {
+        throw new Error(profileUpdateResult.error);
+      }
+
+      // Attempt password change if user provided new password
+      if (data.newPassword) {
+        const passwordChangeResult = await changePassword({
+          newPassword: data.newPassword!,
+          confirmPassword: data.confirmPassword!,
+        });
+
+        if (!passwordChangeResult.success) {
+          throw new Error(passwordChangeResult.error);
+        }
+      }
 
       showToast({
         title: 'Profile Updated Successfully!',
@@ -86,14 +109,14 @@ export default function ProfilePage() {
         type: 'success',
       });
 
-      // Redirect to dashboard after a short delay
+      // Refresh profile data
       setTimeout(() => {
         router.push('/dashboard');
       }, 1500);
-    } catch (error) {
+    } catch (error: any) {
       showToast({
         title: 'Failed to Update Profile',
-        description: 'Please try again or check your connection.',
+        description: error.message || 'Please try again or check your connection.',
         type: 'error',
       });
     } finally {
@@ -127,6 +150,7 @@ export default function ProfilePage() {
         {/* Main Form Container */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+
             {/* Personal Information Section */}
             <div className="space-y-4">
               <div className="flex items-center space-x-2 pb-2 border-b border-gray-100">
@@ -186,174 +210,124 @@ export default function ProfilePage() {
                 )}
               </div>
 
-              {/* Email */}
+              {/* Email (Read-only) */}
               <div className="space-y-2">
-                <Label
-                  htmlFor="email"
-                  className="text-sm font-medium text-gray-700"
-                >
-                  Email Address *
+                <Label className="text-sm font-medium text-gray-700">
+                  Email Address
                 </Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="Enter your email address"
-                    {...register('email')}
-                    className={cn(
-                      'h-10 pl-10',
-                      errors.email &&
-                        'border-red-500 focus:border-red-500 focus:ring-red-500',
-                    )}
-                  />
+                  <div className="h-10 pl-10 pr-4 flex items-center bg-gray-50 border border-gray-200 rounded-md text-gray-900">
+                    {user?.email || ''}
+                  </div>
                 </div>
-                {errors.email && (
-                  <p className="text-sm text-red-600">{errors.email.message}</p>
-                )}
+                <p className="text-xs text-gray-500">
+                  Email address cannot be changed
+                </p>
               </div>
             </div>
 
-            {/* Security Section */}
+            {/* Security Section - Available for all users */}
             <div className="space-y-4">
-              <div className="flex items-center space-x-2 pb-2 border-b border-gray-100">
-                <Shield className="h-5 w-5 text-blue-600" />
-                <h2 className="text-lg font-medium text-gray-900">Security</h2>
-              </div>
-
-              {/* Current Password */}
-              <div className="space-y-2">
-                <Label
-                  htmlFor="currentPassword"
-                  className="text-sm font-medium text-gray-700"
-                >
-                  Current Password
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="currentPassword"
-                    type={showCurrentPassword ? 'text' : 'password'}
-                    placeholder="Enter current password"
-                    {...register('currentPassword')}
-                    className={cn(
-                      'h-10 pr-10',
-                      errors.currentPassword &&
-                        'border-red-500 focus:border-red-500 focus:ring-red-500',
-                    )}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {showCurrentPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
+                <div className="flex items-center space-x-2 pb-2 border-b border-gray-100">
+                  <Shield className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-lg font-medium text-gray-900">Security</h2>
                 </div>
-                {errors.currentPassword && (
-                  <p className="text-sm text-red-600">
-                    {errors.currentPassword.message}
-                  </p>
-                )}
-              </div>
 
-              {/* New Password */}
-              <div className="space-y-2">
-                <Label
-                  htmlFor="newPassword"
-                  className="text-sm font-medium text-gray-700"
-                >
-                  New Password
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="newPassword"
-                    type={showNewPassword ? 'text' : 'password'}
-                    placeholder="Enter new password"
-                    {...register('newPassword')}
-                    className={cn(
-                      'h-10 pr-10',
-                      errors.newPassword &&
-                        'border-red-500 focus:border-red-500 focus:ring-red-500',
-                    )}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                {/* New Password */}
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="newPassword"
+                    className="text-sm font-medium text-gray-700"
                   >
-                    {showNewPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-                {errors.newPassword && (
-                  <p className="text-sm text-red-600">
-                    {errors.newPassword.message}
-                  </p>
-                )}
-              </div>
-
-              {/* Confirm Password */}
-              <div className="space-y-2">
-                <Label
-                  htmlFor="confirmPassword"
-                  className="text-sm font-medium text-gray-700"
-                >
-                  Confirm New Password
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="confirmPassword"
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    placeholder="Confirm new password"
-                    {...register('confirmPassword')}
-                    className={cn(
-                      'h-10 pr-10',
-                      errors.confirmPassword &&
-                        'border-red-500 focus:border-red-500 focus:ring-red-500',
-                    )}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {showConfirmPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-                {errors.confirmPassword && (
-                  <p className="text-sm text-red-600">
-                    {errors.confirmPassword.message}
-                  </p>
-                )}
-              </div>
-
-              {/* Password Match Indicator */}
-              {newPassword && confirmPassword && (
-                <div
-                  className={cn(
-                    'text-sm p-2 rounded-md',
-                    newPassword === confirmPassword
-                      ? 'text-green-600 bg-green-50 border border-green-200'
-                      : 'text-red-600 bg-red-50 border border-red-200',
+                    New Password
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="newPassword"
+                      type={showNewPassword ? 'text' : 'password'}
+                      placeholder="Enter new password (optional)"
+                      {...register('newPassword')}
+                      className={cn(
+                        'h-10 pr-10',
+                        errors.newPassword &&
+                          'border-red-500 focus:border-red-500 focus:ring-red-500',
+                      )}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showNewPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                  {errors.newPassword && (
+                    <p className="text-sm text-red-600">
+                      {errors.newPassword.message}
+                    </p>
                   )}
-                >
-                  {newPassword === confirmPassword
-                    ? '✓ Passwords match'
-                    : '✗ Passwords do not match'}
                 </div>
-              )}
-            </div>
+
+                {/* Confirm Password */}
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="confirmPassword"
+                    className="text-sm font-medium text-gray-700"
+                  >
+                    Confirm New Password
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="confirmPassword"
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      placeholder="Confirm new password"
+                      {...register('confirmPassword')}
+                      className={cn(
+                        'h-10 pr-10',
+                        errors.confirmPassword &&
+                          'border-red-500 focus:border-red-500 focus:ring-red-500',
+                      )}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                  {errors.confirmPassword && (
+                    <p className="text-sm text-red-600">
+                      {errors.confirmPassword.message}
+                    </p>
+                  )}
+                </div>
+
+                {/* Password Match Indicator */}
+                {newPassword && confirmPassword && (
+                  <div
+                    className={cn(
+                      'text-sm p-2 rounded-md',
+                      newPassword === confirmPassword
+                        ? 'text-green-600 bg-green-50 border border-green-200'
+                        : 'text-red-600 bg-red-50 border border-red-200',
+                    )}
+                  >
+                    {newPassword === confirmPassword
+                      ? '✓ Passwords match'
+                      : '✗ Passwords do not match'}
+                  </div>
+                )}
+              </div>
 
             {/* Action Buttons */}
             <div className="flex justify-end space-x-3 pt-6 border-t border-gray-100">

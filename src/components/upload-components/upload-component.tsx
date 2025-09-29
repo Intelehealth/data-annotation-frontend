@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,6 +30,7 @@ interface UploadComponentProps {
     fileName: string,
     totalRows: number,
   ) => void;
+  datasetId?: string;
   className?: string;
 }
 
@@ -37,6 +38,7 @@ export function UploadComponent({
   onFilesSelected,
   onUploadComplete,
   onCSVUploaded,
+  datasetId,
   className,
 }: UploadComponentProps) {
   const [uploadType, setUploadType] = useState<'files' | 'csv'>('csv');
@@ -50,6 +52,28 @@ export function UploadComponent({
   const [uploadStatus, setUploadStatus] = useState<{
     [key: string]: 'pending' | 'uploading' | 'success' | 'error';
   }>({});
+  const [datasetInfo, setDatasetInfo] = useState<{ name: string; description: string } | null>(null);
+
+  // Load dataset info when datasetId is provided
+  useEffect(() => {
+    const loadDatasetInfo = async () => {
+      if (datasetId) {
+        try {
+          const dataset = await datasetsAPI.getById(datasetId);
+          setDatasetInfo({
+            name: dataset.name,
+            description: dataset.description || ''
+          });
+          setSelectedDatasetId(datasetId);
+        } catch (error) {
+          console.error('Error loading dataset info:', error);
+          setDatasetInfo(null);
+        }
+      }
+    };
+
+    loadDatasetInfo();
+  }, [datasetId]);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -224,6 +248,18 @@ export function UploadComponent({
 
   return (
     <div className={cn('space-y-6', className)}>
+      {/* Dataset Header */}
+      {datasetId && datasetInfo && (
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">
+            {datasetInfo.name}
+          </h1>
+          <p className="text-gray-600 mt-1">
+            {'Upload files to this dataset'}
+          </p>
+        </div>
+      )}
+
       {/* Upload Type Tabs */}
       <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
         <button

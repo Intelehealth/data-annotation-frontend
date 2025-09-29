@@ -8,16 +8,23 @@ import {
   ReactNode,
 } from 'react';
 import { useRouter } from 'next/navigation';
-import { authAPI } from '@/lib/api';
+import { authAPI, usersAPI } from '@/lib/api';
 
 interface User {
   _id: string;
   email: string;
   firstName: string;
   lastName: string;
+  role: string;
+  authProvider: 'local' | 'google';
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  googleProfile?: {
+    picture?: string;
+    locale?: string;
+    verifiedEmail?: boolean;
+  }
 }
 
 interface AuthContextType {
@@ -33,6 +40,21 @@ interface AuthContextType {
     password: string;
     firstName: string;
     lastName: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  signupAdmin: (userData: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  updateProfile: (profileData: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  changePassword: (passwordData: {
+    newPassword: string;
+    confirmPassword: string;
   }) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 }
@@ -90,7 +112,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('accessToken', response.accessToken);
       localStorage.setItem('user', JSON.stringify(response.user));
 
-      setUser(response.user);
+      // Fetch complete profile with authProvider info
+      try {
+        const profileResponse = await usersAPI.getProfile();
+        localStorage.setItem('user', JSON.stringify(profileResponse));
+        setUser(profileResponse);
+      } catch (profileError) {
+        // Fallback to basic user data if profile fetch fails
+        setUser(response.user);
+      }
+
       router.push('/dashboard');
 
       return { success: true };
@@ -114,13 +145,89 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('accessToken', response.accessToken);
       localStorage.setItem('user', JSON.stringify(response.user));
 
-      setUser(response.user);
+      // Fetch complete profile with authProvider info
+      try {
+        const profileResponse = await usersAPI.getProfile();
+        localStorage.setItem('user', JSON.stringify(profileResponse));
+        setUser(profileResponse);
+      } catch (profileError) {
+        // Fallback to basic user data if profile fetch fails
+        setUser(response.user);
+      }
+
       router.push('/dashboard');
 
       return { success: true };
     } catch (error: any) {
       console.error('Signup error:', error);
       const errorMessage = error.response?.data?.message || 'Signup failed';
+      return { success: false, error: errorMessage };
+    }
+  };
+
+  const signupAdmin = async (userData: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+  }) => {
+    try {
+      const response = await authAPI.registerAdmin(userData);
+
+      // Store token and user data
+      localStorage.setItem('accessToken', response.accessToken);
+      localStorage.setItem('user', JSON.stringify(response.user));
+
+      // Fetch complete profile with authProvider info
+      try {
+        const profileResponse = await usersAPI.getProfile();
+        localStorage.setItem('user', JSON.stringify(profileResponse));
+        setUser(profileResponse);
+      } catch (profileError) {
+        // Fallback to basic user data if profile fetch fails
+        setUser(response.user);
+      }
+
+      router.push('/dashboard');
+
+      return { success: true };
+    } catch (error: any) {
+      console.error('Admin signup error:', error);
+      const errorMessage = error.response?.data?.message || 'Admin signup failed';
+      return { success: false, error: errorMessage };
+    }
+  };
+
+  const updateProfile = async (profileData: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  }) => {
+    try {
+      const response = await usersAPI.updateProfile(profileData);
+      
+      // Update local user data
+      localStorage.setItem('user', JSON.stringify(response));
+      setUser(response);
+
+      return { success: true };
+    } catch (error: any) {
+      console.error('Profile update error:', error);
+      const errorMessage = error.response?.data?.message || 'Profile update failed';
+      return { success: false, error: errorMessage };
+    }
+  };
+
+  const changePassword = async (passwordData: {
+    newPassword: string;
+    confirmPassword: string;
+  }) => {
+    try {
+      await usersAPI.changePassword(passwordData);
+      return { success: true };
+    } catch (error: any) {
+      console.error('Password change error:', error);
+      const errorMessage = error.response?.data?.message || 'Password change failed';
       return { success: false, error: errorMessage };
     }
   };
@@ -138,6 +245,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!user,
     login,
     signup,
+    signupAdmin,
+    updateProfile,
+    changePassword,
     logout,
   };
 

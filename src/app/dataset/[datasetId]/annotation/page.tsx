@@ -2,6 +2,7 @@
 
 import { useSearchParams, useParams } from 'next/navigation';
 import { AnnotationWorkbench } from '@/components/annotation-components/annotation-workbench';
+import { DatasetAnnotationWorkbench } from '@/components/annotation-components/dataset-annotation-workbench';
 
 export default function AnnotationPage() {
   const searchParams = useSearchParams();
@@ -15,40 +16,22 @@ export default function AnnotationPage() {
   console.log('AnnotationPage - params:', params);
   console.log('AnnotationPage - searchParams:', searchParams.toString());
 
-  if (!csvImportId) {
+  // Determine annotation mode
+  const isDatasetLevel = !csvImportId; // If no csvImportId, it's dataset-level annotation
+
+  if (isDatasetLevel) {
+    // Dataset-level annotation
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center text-gray-500">
-          <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-6">
-            <span className="text-4xl text-gray-400">⚠️</span>
-          </div>
-          <h3 className="text-xl font-medium mb-2">
-            Missing Required Parameters
-          </h3>
-          <p className="text-sm">
-            CSV Import ID is required to start annotation
-          </p>
-          {!csvImportId && (
-            <p className="text-xs text-red-500 mt-2">
-              Missing: csvImportId parameter
-            </p>
-          )}
-          <div className="mt-4 text-xs text-gray-400">
-            <p>Debug Info:</p>
-            <p>csvImportId: {csvImportId || 'null'}</p>
-            <p>
-              URL:{' '}
-              {typeof window !== 'undefined' ? window.location.href : 'SSR'}
-            </p>
-          </div>
-        </div>
+      <div className="h-screen">
+        <DatasetAnnotationWorkbench datasetId={datasetId} />
+      </div>
+    );
+  } else {
+    // CSV-level annotation (legacy support)
+    return (
+      <div className="h-screen">
+        <AnnotationWorkbench csvImportId={csvImportId} datasetId={datasetId} />
       </div>
     );
   }
-
-  return (
-    <div className="h-screen">
-      <AnnotationWorkbench csvImportId={csvImportId} datasetId={datasetId} />
-    </div>
-  );
 }

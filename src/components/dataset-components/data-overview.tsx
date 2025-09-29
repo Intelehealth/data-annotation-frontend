@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { ExportDropdown, ExportOption } from '@/components/ui/export-dropdown';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Upload,
@@ -12,17 +13,19 @@ import {
   BarChart3,
   Loader2,
   RefreshCw,
-  Trash2,
   AlertCircle,
   Settings,
   Play,
-  RotateCcw,
+  Download,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CSVImport, CSVImportsAPI } from '@/lib/api/csv-imports';
+import { DatasetMergedRowsAPI, AnnotationProgress } from '@/lib/api/dataset-merged-rows';
 import { fieldSelectionAPI } from '@/lib/api/field-config';
+import { datasetsAPI } from '@/lib/api/datasets';
 import { useToast } from '@/components/ui/toast';
-import { DeleteConfirmationDialog } from './delete-confirmation-dialog';
+import { exportSelectedColumnsToCSV, exportAllColumnsToCSV } from '@/lib/dataset-export-helper';
 
 interface DataOverviewProps {
   datasetId: string;
@@ -41,26 +44,27 @@ export function DataOverview({
   const [csvImports, setCsvImports] = useState<CSVImport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [csvToDelete, setCsvToDelete] = useState<CSVImport | null>(null);
   const [hasFieldConfig, setHasFieldConfig] = useState<boolean | null>(null);
   const [checkingConfig, setCheckingConfig] = useState(false);
-  const [annotationProgress, setAnnotationProgress] = useState<Record<string, any>>({});
-  const [checkingProgress, setCheckingProgress] = useState(false);
+  const [hasMergedRows, setHasMergedRows] = useState<boolean | null>(null);
+  const [checkingMergedRows, setCheckingMergedRows] = useState(false);
+  const [annotationProgress, setAnnotationProgress] = useState<AnnotationProgress | null>(null);
+  const [checkingAnnotationProgress, setCheckingAnnotationProgress] = useState(false);
+  const [datasetData, setDatasetData] = useState<any>(null);
+  const [annotationConfig, setAnnotationConfig] = useState<any>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [datasetInfo, setDatasetInfo] = useState<{ name: string; description: string } | null>(null);
   const { showToast } = useToast();
 
   useEffect(() => {
     loadCSVImports();
     checkFieldConfiguration();
+    checkMergedRows();
+    checkAnnotationProgress();
+    loadDatasetData();
+    loadDatasetInfo();
   }, [datasetId]);
 
-  // Check annotation progress after CSV imports are loaded
-  useEffect(() => {
-    if (csvImports.length > 0) {
-      checkAnnotationProgress();
-    }
-  }, [csvImports]);
 
   const loadCSVImports = async () => {
     try {
@@ -94,37 +98,70 @@ export function DataOverview({
     }
   };
 
-  const checkAnnotationProgress = async () => {
+  const checkMergedRows = async () => {
     try {
-      setCheckingProgress(true);
-      const progressData: Record<string, any> = {};
-      
-      // Check progress for each CSV import
-      for (const csvImport of csvImports) {
-        try {
-          const resumeInfo = await CSVImportsAPI.canResumeAnnotation(csvImport._id);
-          progressData[csvImport._id] = resumeInfo;
-        } catch (error) {
-          console.error(`Error checking progress for ${csvImport._id}:`, error);
-          progressData[csvImport._id] = {
-            canResume: false,
-            lastViewedRow: 0,
-            completedRows: 0,
-            totalRows: csvImport.totalRows,
-            progressPercentage: 0
-          };
-        }
-      }
-      
-      setAnnotationProgress(progressData);
-    } catch (error) {
-      console.error('Error checking annotation progress:', error);
+      setCheckingMergedRows(true);
+      console.log('Checking merged rows for dataset:', datasetId);
+      const hasRows = await DatasetMergedRowsAPI.hasMergedRows(datasetId);
+      console.log('Merged rows check result:', hasRows);
+      setHasMergedRows(hasRows);
+    } catch (err: any) {
+      console.error('Error checking merged rows:', err);
+      setHasMergedRows(false);
     } finally {
-      setCheckingProgress(false);
+      setCheckingMergedRows(false);
     }
   };
 
-  // Method to refresh field configuration status (can be called from parent)
+  const checkAnnotationProgress = async () => {
+    try {
+      setCheckingAnnotationProgress(true);
+      console.log('Checking annotation progress for dataset:', datasetId);
+      const progress = await DatasetMergedRowsAPI.getAnnotationProgress(datasetId);
+      console.log('Annotation progress result:', progress);
+      setAnnotationProgress(progress);
+    } catch (err: any) {
+      console.error('Error checking annotation progress:', err);
+      setAnnotationProgress(null);
+    } finally {
+      setCheckingAnnotationProgress(false);
+    }
+  };
+
+  const loadDatasetData = async () => {
+    try {
+      console.log('Loading dataset data for export functionality...');
+      const mergedData = await DatasetMergedRowsAPI.getDatasetData(datasetId);
+      console.log('Dataset data loaded:', mergedData);
+      setDatasetData(mergedData);
+
+      // Load annotation config
+      const config = await fieldSelectionAPI.getDatasetFieldConfig(datasetId);
+      console.log('Annotation config loaded:', config);
+      setAnnotationConfig(config);
+    } catch (err: any) {
+      console.error('Error loading dataset data:', err);
+      setDatasetData(null);
+      setAnnotationConfig(null);
+    }
+  };
+
+  const loadDatasetInfo = async () => {
+    try {
+      console.log('Loading dataset info for header...');
+      const dataset = await datasetsAPI.getById(datasetId);
+      console.log('Dataset info loaded:', dataset);
+      setDatasetInfo({
+        name: dataset.name,
+        description: dataset.description || ''
+      });
+    } catch (err: any) {
+      console.error('Error loading dataset info:', err);
+      setDatasetInfo(null);
+    }
+  };
+
+
   const refreshFieldConfiguration = () => {
     checkFieldConfiguration();
   };
@@ -154,64 +191,126 @@ export function DataOverview({
     };
   }, [datasetId]);
 
-  const handleStartAnnotation = async (csvImport: CSVImport) => {
-    if (hasFieldConfig) {
-      // Field configuration exists, redirect to annotation workbench
-      router.push(
-        `/dataset/${datasetId}/annotation?csvImportId=${csvImport._id}`,
-      );
-    } else {
-      // No field configuration, navigate to field configuration tab
-      if (onNavigateToFieldConfig) {
-        onNavigateToFieldConfig();
-      } else {
-        router.push(`/dataset/${datasetId}?tab=field-configuration`);
-      }
-    }
+
+  const handleStartDatasetAnnotation = async () => {
+    // Always redirect to dataset annotation workbench
+    router.push(`/dataset/${datasetId}/annotation`);
   };
 
-  const handleDeleteCSVImport = async (csvImportId: string) => {
-    const csvImport = csvImports.find((imp) => imp._id === csvImportId);
-    if (csvImport) {
-      setCsvToDelete(csvImport);
-      setDeleteDialogOpen(true);
+  const handleExportSelectedColumns = useCallback(async () => {
+    if (!datasetData || !annotationConfig) {
+      console.log('Cannot export: missing dataset data or annotation config');
+      return;
     }
-  };
 
-  const confirmDelete = async () => {
-    if (!csvToDelete) return;
-
+    setIsExporting(true);
     try {
-      setDeletingId(csvToDelete._id);
-      const result = await CSVImportsAPI.deleteCSVImport(
+      await exportSelectedColumnsToCSV(
+        datasetData,
+        {
+          annotationFields: annotationConfig.annotationFields.map((field: any) => ({
+            ...field,
+            isNewColumn: field.isNewColumn ?? false
+          }))
+        },
         datasetId,
-        csvToDelete._id,
+        {
+          cleanHtml: true,
+          showSuccess: true,
+          onSuccess: (message) => {
+            showToast({
+              type: 'success',
+              title: 'Export Complete',
+              description: message,
+            });
+          },
+          onError: (error) => {
+            console.error('Error exporting selected columns CSV:', error);
+            showToast({
+              type: 'error',
+              title: 'Export Failed',
+              description: 'Failed to export CSV file',
+            });
+          },
+        }
       );
-
-      if (result.success) {
-        // Remove the deleted CSV import from the list
-        setCsvImports((prev) =>
-          prev.filter((imp) => imp._id !== csvToDelete._id),
-        );
-        showToast({
-          type: 'success',
-          title: 'File Deleted',
-          description: result.message,
-        });
-      }
-    } catch (err) {
-      console.error('Error deleting CSV import:', err);
+    } catch (error) {
+      console.error('Export error:', error);
       showToast({
         type: 'error',
-        title: 'Delete Failed',
-        description: 'Failed to delete CSV import. Please try again.',
+        title: 'Export Failed',
+        description: 'Failed to export CSV file',
       });
     } finally {
-      setDeletingId(null);
-      setDeleteDialogOpen(false);
-      setCsvToDelete(null);
+      setIsExporting(false);
     }
-  };
+  }, [datasetData, annotationConfig, showToast, datasetId]);
+
+  const handleExportAllColumns = useCallback(async () => {
+    if (!datasetData || !annotationConfig) {
+      console.log('Cannot export: missing dataset data or annotation config');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      await exportAllColumnsToCSV(
+        datasetData,
+        {
+          annotationFields: annotationConfig.annotationFields.map((field: any) => ({
+            ...field,
+            isNewColumn: field.isNewColumn ?? false
+          }))
+        },
+        datasetId,
+        {
+          cleanHtml: true,
+          showSuccess: true,
+          onSuccess: (message) => {
+            showToast({
+              type: 'success',
+              title: 'Export Complete',
+              description: message,
+            });
+          },
+          onError: (error) => {
+            console.error('Error exporting all columns CSV:', error);
+            showToast({
+              type: 'error',
+              title: 'Export Failed',
+              description: 'Failed to export CSV file',
+            });
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Export error:', error);
+      showToast({
+        type: 'error',
+        title: 'Export Failed',
+        description: 'Failed to export CSV file',
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }, [datasetData, annotationConfig, showToast, datasetId]);
+
+  // Export options for the dropdown
+  const exportOptions: ExportOption[] = [
+    {
+      id: 'selected',
+      label: 'Selected Columns',
+      description: 'Export only configured metadata and annotation fields',
+      action: handleExportSelectedColumns,
+    },
+    {
+      id: 'all',
+      label: 'All Columns',
+      description: 'Export all original CSV columns plus annotation fields',
+      action: handleExportAllColumns,
+    },
+  ];
+
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -238,9 +337,11 @@ export function DataOverview({
         {/* Header with Upload and Configure Fields Buttons */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Data Overview</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {datasetInfo?.name || 'Data Overview'}
+            </h1>
             <p className="text-gray-600 mt-1">
-              Manage and monitor your uploaded data files
+              {'Data Overview - Manage and monitor your uploaded data files'}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -251,12 +352,26 @@ export function DataOverview({
               <Settings className="h-4 w-4" />
               Configure Fields
             </Button>
+            <ExportDropdown
+              options={exportOptions}
+              disabled={!hasFieldConfig || !annotationProgress || annotationProgress.completedRows === 0 || isExporting}
+            />
             <Button
-              onClick={onNavigateToUpload}
-              className="flex items-center gap-2"
+              onClick={handleStartDatasetAnnotation}
+              disabled={!hasFieldConfig || checkingConfig || checkingAnnotationProgress}
+              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              <Upload className="h-4 w-4" />
-              Upload Data
+              {checkingConfig || checkingAnnotationProgress ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {checkingConfig ? 'Checking Config...' : 'Checking Progress...'}
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4" />
+                  {annotationProgress && annotationProgress.completedRows > 0 ? 'Resume Annotation' : 'Start Annotation'}
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -274,7 +389,7 @@ export function DataOverview({
               Get started by uploading your CSV files or other data formats to
               begin the annotation process.
             </p>
-            <Button onClick={onNavigateToUpload} size="lg">
+            <Button onClick={onNavigateToUpload} size="lg" className="bg-black hover:bg-gray-800 text-white">
               <Upload className="h-5 w-5 mr-2" />
               Upload Your First File
             </Button>
@@ -337,9 +452,11 @@ export function DataOverview({
       <div className={cn('space-y-6', className)}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Data Overview</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {datasetInfo?.name || 'Data Overview'}
+            </h1>
             <p className="text-gray-600 mt-1">
-              Manage and monitor your uploaded data files
+              {'Data Overview - Manage and monitor your uploaded data files'}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -350,12 +467,26 @@ export function DataOverview({
               <Settings className="h-4 w-4" />
               Configure Fields
             </Button>
+            <ExportDropdown
+              options={exportOptions}
+              disabled={!hasFieldConfig || !annotationProgress || annotationProgress.completedRows === 0 || isExporting}
+            />
             <Button
-              onClick={onNavigateToUpload}
-              className="flex items-center gap-2"
+              onClick={handleStartDatasetAnnotation}
+              disabled={!hasFieldConfig || checkingConfig || checkingAnnotationProgress}
+              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              <Upload className="h-4 w-4" />
-              Upload Data
+              {checkingConfig || checkingAnnotationProgress ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {checkingConfig ? 'Checking Config...' : 'Checking Progress...'}
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4" />
+                  {annotationProgress && annotationProgress.completedRows > 0 ? 'Resume Annotation' : 'Start Annotation'}
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -374,9 +505,11 @@ export function DataOverview({
       <div className={cn('space-y-6', className)}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Data Overview</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {datasetInfo?.name || 'Data Overview'}
+            </h1>
             <p className="text-gray-600 mt-1">
-              Manage and monitor your uploaded data files
+              {'Data Overview - Manage and monitor your uploaded data files'}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -387,12 +520,26 @@ export function DataOverview({
               <Settings className="h-4 w-4" />
               Configure Fields
             </Button>
+            <ExportDropdown
+              options={exportOptions}
+              disabled={!hasFieldConfig || !annotationProgress || annotationProgress.completedRows === 0 || isExporting}
+            />
             <Button
-              onClick={onNavigateToUpload}
-              className="flex items-center gap-2"
+              onClick={handleStartDatasetAnnotation}
+              disabled={!hasFieldConfig || checkingConfig || checkingAnnotationProgress}
+              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              <Upload className="h-4 w-4" />
-              Upload Data
+              {checkingConfig || checkingAnnotationProgress ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {checkingConfig ? 'Checking Config...' : 'Checking Progress...'}
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4" />
+                  {annotationProgress && annotationProgress.completedRows > 0 ? 'Resume Annotation' : 'Start Annotation'}
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -426,9 +573,11 @@ export function DataOverview({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Data Overview</h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {datasetInfo?.name || 'Data Overview'}
+          </h1>
           <p className="text-gray-600 mt-1">
-            Manage and monitor your uploaded data files
+            {"Data Overview - Manage and monitor your uploaded data files"}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -439,12 +588,26 @@ export function DataOverview({
             <Settings className="h-4 w-4" />
             Configure Fields
           </Button>
+          <ExportDropdown
+            options={exportOptions}
+            disabled={!hasFieldConfig || !annotationProgress || annotationProgress.completedRows === 0 || isExporting}
+          />
           <Button
-            onClick={onNavigateToUpload}
-            className="flex items-center gap-2"
+            onClick={handleStartDatasetAnnotation}
+            disabled={!hasFieldConfig || checkingConfig || checkingAnnotationProgress}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            <Upload className="h-4 w-4" />
-            Upload Data
+            {checkingConfig || checkingAnnotationProgress ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {checkingConfig ? 'Checking Config...' : 'Checking Progress...'}
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4" />
+                {annotationProgress && annotationProgress.completedRows > 0 ? 'Resume Annotation' : 'Start Annotation'}
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -452,10 +615,19 @@ export function DataOverview({
       {/* CSV Imports List */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-blue-600" />
-            Uploaded Files
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              Uploaded Files
+            </CardTitle>
+            <Button
+              onClick={onNavigateToUpload}
+              className="flex items-center gap-2 bg-black hover:bg-gray-800 text-white"
+            >
+              <Upload className="h-4 w-4" />
+              Upload Data
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -490,76 +662,6 @@ export function DataOverview({
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-4">
-                  {/* Actions */}
-                  <div className="flex items-center space-x-2">
-                    <button
-                      className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 hover:bg-red-100 rounded-md disabled:opacity-50"
-                      onClick={() => handleDeleteCSVImport(csvImport._id)}
-                      disabled={deletingId === csvImport._id}
-                      title="Delete file"
-                    >
-                      <Trash2
-                        className={`h-4 w-4 text-red-500 hover:text-red-700 ${
-                          deletingId === csvImport._id ? 'animate-pulse' : ''
-                        }`}
-                      />
-                    </button>
-                    
-                    {/* Show Resume or Start button based on progress */}
-                    {(() => {
-                      const progress = annotationProgress[csvImport._id];
-                      const canResume = progress?.canResume || false;
-                      const isLoading = checkingConfig || checkingProgress;
-                      
-                      if (canResume && hasFieldConfig) {
-                        return (
-                          <Button
-                            size="sm"
-                            onClick={() => handleStartAnnotation(csvImport)}
-                            disabled={isLoading}
-                            className="bg-orange-600 hover:bg-orange-700 text-white"
-                          >
-                            {isLoading ? (
-                              <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Checking...
-                              </>
-                            ) : (
-                              <>
-                                <RotateCcw className="h-4 w-4 mr-2" />
-                                Resume
-                              </>
-                            )}
-                          </Button>
-                        );
-                      } else if (hasFieldConfig) {
-                        return (
-                          <Button
-                            size="sm"
-                            onClick={() => handleStartAnnotation(csvImport)}
-                            disabled={isLoading}
-                            className="bg-green-600 hover:bg-green-700 text-white"
-                          >
-                            {isLoading ? (
-                              <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Checking...
-                              </>
-                            ) : (
-                              <>
-                                <Play className="h-4 w-4 mr-2" />
-                                Start Annotation
-                              </>
-                            )}
-                          </Button>
-                        );
-                      } else {
-                        return null;
-                      }
-                    })()}
-                  </div>
-                </div>
               </div>
             ))}
           </div>
@@ -592,15 +694,6 @@ export function DataOverview({
       </Card>
 
 
-      {/* Delete Confirmation Dialog */}
-      <DeleteConfirmationDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        onConfirm={confirmDelete}
-        itemName={csvToDelete?.originalFileName || ''}
-        itemType="CSV file"
-        isLoading={deletingId !== null}
-      />
     </div>
   );
 }

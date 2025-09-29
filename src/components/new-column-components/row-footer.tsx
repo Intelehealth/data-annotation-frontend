@@ -42,16 +42,16 @@ export function RowFooter({
 
   return (
       <div className="bg-white border-t border-gray-200 p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center">
           {/* Left: Row info */}
-          <div className="flex items-center">
+          <div className="flex items-center w-1/3">
             <span className="text-sm text-gray-600">
-              Row {currentTaskIndex + 1} of {tasks.length}
+              Row {tasks[currentTaskIndex]?.rowIndex || currentTaskIndex + 1} of {tasks.length}
             </span>
           </div>
 
           {/* Center: Previous + Jump to Row + Next */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center justify-center space-x-4 flex-1">
             <Button
               onClick={() => onNavigateTask('prev')}
               disabled={currentTaskIndex === 0}
@@ -62,68 +62,99 @@ export function RowFooter({
             </Button>
             
             <div className="flex space-x-2">
-              {/* Show first few rows */}
-              {currentTaskIndex > 5 && (
-                <>
+              {/* Simple pagination: show all rows for small datasets */}
+              {tasks.length <= 10 ? (
+                // Show all rows if 10 or fewer
+                tasks.map((task, index) => (
                   <button
-                    onClick={() => onJumpToRow(1)}
-                    className="px-2 py-1 text-xs rounded transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    title="Row 1"
-                  >
-                    1
-                  </button>
-                  {currentTaskIndex > 6 && (
-                    <span className="text-xs text-gray-500 px-1">...</span>
-                  )}
-                </>
-              )}
-              
-              {/* Show current row ±5 */}
-              {Array.from({ length: Math.min(10, tasks.length) }, (_, index) => {
-                const startIndex = Math.max(0, Math.min(currentTaskIndex - 4, tasks.length - 10));
-                const rowNumber = startIndex + index + 1;
-                const isCurrentRow = currentTaskIndex === startIndex + index;
-                const task = tasks[startIndex + index];
-                
-                if (rowNumber > tasks.length) return null;
-                
-                return (
-                  <button
-                    key={rowNumber}
-                    onClick={() => onJumpToRow(rowNumber)}
+                    key={task.rowIndex}
+                    onClick={() => onJumpToRow(task.rowIndex)}
                     className={cn(
                       'px-2 py-1 text-xs rounded transition-colors',
-                      isCurrentRow
+                      index === currentTaskIndex
                         ? 'bg-blue-600 text-white'
-                        : task?.status === 'completed'
+                        : task.status === 'completed'
                         ? 'bg-green-500 text-white hover:bg-green-600'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     )}
-                    title={`Row ${rowNumber} - ${task?.status || 'pending'}`}
+                    title={`Row ${task.rowIndex} - ${task.status || 'pending'}`}
                   >
-                    {rowNumber}
+                    {task.rowIndex}
                   </button>
-                );
-              })}
-              
-              {/* Show last row if not already shown */}
-              {currentTaskIndex < tasks.length - 6 && (
+                ))
+              ) : (
+                // Show paginated view for larger datasets
                 <>
-                  {currentTaskIndex < tasks.length - 7 && (
-                    <span className="text-xs text-gray-500 px-1">...</span>
+                  {/* First row */}
+                  {currentTaskIndex > 2 && (
+                    <>
+                      <button
+                        onClick={() => onJumpToRow(tasks[0].rowIndex)}
+                        className={
+                          cn(
+                            'px-2 py-1 text-xs rounded transition-colors',
+                            currentTaskIndex === 0
+                              ? 'bg-blue-600 text-white'
+                              : tasks[0].status === 'completed'
+                              ? 'bg-green-500 text-white hover:bg-green-600'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+                          )
+                        }
+                        title={`Row ${tasks[0].rowIndex} - ${tasks[0].status || 'pending'}`}
+                      >
+                        {tasks[0].rowIndex}
+                      </button>
+                      {currentTaskIndex > 3 && <span className="text-xs text-gray-500 px-1">...</span>}
+                    </>
                   )}
-                  <button
-                    onClick={() => onJumpToRow(tasks.length)}
-                    className={cn(
-                      'px-2 py-1 text-xs rounded transition-colors',
-                      currentTaskIndex === tasks.length - 1
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    )}
-                    title={`Row ${tasks.length} - Last row`}
-                  >
-                    {tasks.length}
-                  </button>
+                  
+                  {/* Current row ±2 */}
+                  {Array.from({ length: Math.min(5, tasks.length) }, (_, i) => {
+                    const startIndex = Math.max(0, Math.min(currentTaskIndex - 2, tasks.length - 5));
+                    const taskIndex = startIndex + i;
+                    const task = tasks[taskIndex];
+                    
+                    if (!task || taskIndex >= tasks.length) return null;
+                    
+                    return (
+                      <button
+                        key={task.rowIndex}
+                        onClick={() => onJumpToRow(task.rowIndex)}
+                        className={cn(
+                          'px-2 py-1 text-xs rounded transition-colors',
+                          taskIndex === currentTaskIndex
+                            ? 'bg-blue-600 text-white'
+                            : task.status === 'completed'
+                            ? 'bg-green-500 text-white hover:bg-green-600'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        )}
+                        title={`Row ${task.rowIndex} - ${task.status || 'pending'}`}
+                      >
+                        {task.rowIndex}
+                      </button>
+                    );
+                  })}
+                  
+                  {/* Last row */}
+                  {currentTaskIndex < tasks.length - 3 && (
+                    <>
+                      {currentTaskIndex < tasks.length - 4 && <span className="text-xs text-gray-500 px-1">...</span>}
+                      <button
+                        onClick={() => onJumpToRow(tasks[tasks.length - 1].rowIndex)}
+                        className={cn(
+                          'px-2 py-1 text-xs rounded transition-colors',
+                          currentTaskIndex === tasks.length - 1
+                            ? 'bg-blue-600 text-white'
+                            : tasks[tasks.length - 1].status === 'completed'
+                            ? 'bg-green-500 text-white hover:bg-green-600'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        )}
+                        title={`Row ${tasks[tasks.length - 1].rowIndex} - ${(tasks[tasks.length - 1].status || 'pending')} (Last row)`}
+                      >
+                        {tasks[tasks.length - 1].rowIndex}
+                      </button>
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -139,7 +170,20 @@ export function RowFooter({
           </div>
 
           {/* Right: Status Summary */}
-          <div className="flex items-center space-x-4 text-sm">
+          <div className="flex items-center space-x-4 text-sm w-1/3 justify-end">
+            <div className="flex items-center space-x-2">
+              <div className="w-16 bg-gray-200 rounded-full h-2">
+                <div 
+                  className={`h-2 rounded-full transition-all duration-300 ${
+                    annotatedTasks.length === tasks.length ? 'bg-green-500' : 'bg-blue-500'
+                  }`}
+                  style={{ width: `${tasks.length > 0 ? (annotatedTasks.length / tasks.length) * 100 : 0}%` }}
+                />
+              </div>
+              <span className="text-gray-600">{Math.round((annotatedTasks.length / tasks.length) * 100)}%</span>
+            </div>
+            
+            
             <div className="flex items-center space-x-1">
               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
               <span className="text-gray-600">{annotatedTasks.length} completed</span>

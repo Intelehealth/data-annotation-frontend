@@ -14,6 +14,7 @@ import {
   HelpCircle,
   LogOut,
   LayoutDashboard,
+  Users,
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -46,6 +47,15 @@ export function Sidebar({ className, forceCollapsed = false }: SidebarProps) {
       icon: Database,
       href: '/dataset',
     },
+    // Admin-only menu items
+    ...(user?.role === 'admin' ? [
+      {
+        id: 'users',
+        label: 'Users',
+        icon: Users,
+        href: '/users',
+      },
+    ] : []),
     {
       id: 'profile',
       label: 'Profile Settings',
@@ -113,9 +123,23 @@ export function Sidebar({ className, forceCollapsed = false }: SidebarProps) {
           </div>
           {!effectiveCollapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 truncate">
-                {user?.firstName} {user?.lastName}
-              </p>
+              <div className="flex items-center space-x-2">
+                <p className="text-sm font-semibold text-gray-900 truncate">
+                  {user?.firstName} {user?.lastName}
+                </p>
+                {user?.role && (
+                  <span
+                    className={cn(
+                      'px-2 py-0.5 text-xs font-medium rounded-full',
+                      user.role === 'admin'
+                        ? 'bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 border border-purple-200'
+                        : 'bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-700 border border-blue-200'
+                    )}
+                  >
+                    {user.role === 'admin' ? 'Admin' : 'User'}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-gray-500 truncate">{user?.email}</p>
             </div>
           )}

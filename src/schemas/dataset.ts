@@ -3,6 +3,9 @@ import { z } from 'zod';
 // Dataset types matching project types
 const datasetTypes = ['text', 'image', 'audio', 'multimodal'] as const;
 
+// Access types
+const accessTypes = ['private', 'public'] as const;
+
 // Create dataset validation schema
 export const createDatasetSchema = z.object({
   name: z
@@ -24,8 +27,13 @@ export const createDatasetSchema = z.object({
     .refine((val) => val !== undefined, {
       message: 'Dataset type is required',
     }),
+  accessType: z
+    .enum(accessTypes, {
+      message: 'Please select a valid access type',
+    }),
 });
 
 // Type exports
 export type CreateDatasetFormData = z.infer<typeof createDatasetSchema>;
 export type DatasetType = (typeof datasetTypes)[number];
+export type AccessType = (typeof accessTypes)[number];

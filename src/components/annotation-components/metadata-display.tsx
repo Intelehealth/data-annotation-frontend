@@ -14,6 +14,7 @@ import {
 import { ImageThumbnails } from './image-thumbnails';
 import { cn } from '@/lib/utils';
 import { AnnotationField } from '@/lib/api/csv-imports';
+import { DragDropHelper } from '@/lib/drag-drop-helper';
 
 interface ImageOverlay {
   isOpen: boolean;
@@ -35,6 +36,7 @@ interface MetadataDisplayProps {
   expandedTextFields: Set<string>;
   imageOverlay: ImageOverlay;
   audioOverlay: AudioOverlay;
+  datasetName?: string;
   onMetadataChange: (metadata: Record<string, any>) => void;
   onDragStart: (e: React.DragEvent, fieldName: string) => void;
   onDragOver: (e: React.DragEvent) => void;
@@ -47,6 +49,8 @@ interface MetadataDisplayProps {
   onOpenImageOverlay: (imageUrls: string[], startIndex?: number) => void;
   onOpenAudioOverlay: (audioUrl: string) => void;
   onNavigateBack: () => void;
+  onPanelDragOver?: (e: React.DragEvent) => void;
+  onDropFromAnnotation?: () => void;
 }
 
 
@@ -87,6 +91,7 @@ export function MetadataDisplay({
   expandedTextFields,
   imageOverlay,
   audioOverlay,
+  datasetName,
   onMetadataChange,
   onDragStart,
   onDragOver,
@@ -99,11 +104,22 @@ export function MetadataDisplay({
   onOpenImageOverlay,
   onOpenAudioOverlay,
   onNavigateBack,
+  onPanelDragOver,
+  onDropFromAnnotation,
 }: MetadataDisplayProps) {
   return (
-    <div className="w-1/2 border-r border-gray-200 bg-white flex flex-col">
+    <div 
+      className="h-full bg-white flex flex-col"
+      onDragOver={(e) => {
+        if (onPanelDragOver) onPanelDragOver(e);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        if (onDropFromAnnotation) onDropFromAnnotation();
+      }}
+    >
       {/* Navigation Header */}
-      <div className="p-3">
+      <div className="p-4 pb-2">
           <Button
             onClick={onNavigateBack}
             className="bg-black hover:bg-gray-800 text-white font-medium px-4 py-2"
@@ -113,10 +129,13 @@ export function MetadataDisplay({
           </Button>
       </div>
 
-      {/* Metadata Header */}
-      <div className="p-4 pt-1 border-b border-gray-100">
+      {/* Data Fields Header */}
+      <div className="px-4 pb-4 border-b border-gray-100">
         <h2 className="text-lg font-semibold text-gray-900">
-          Metadata - Row {metadata.rowIndex !== undefined ? metadata.rowIndex + 1 : 'N/A'}
+          {datasetName && (
+            <span className="text-2xl">{datasetName} - </span>
+          )}
+          Data Fields Row {metadata.rowIndex !== undefined ? metadata.rowIndex : 'N/A'}
         </h2>
         <p className="text-sm text-gray-500 mt-1">
           Drag fields to reorder • Click edit to modify content
@@ -124,17 +143,27 @@ export function MetadataDisplay({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {orderedMetadataFields.map((field) => (
-          <div
+        {orderedMetadataFields.map((field) => {
+          // Use DragDropHelper to determine if field can be dragged
+          const dragValidation = DragDropHelper.canDragField(field, 'metadata');
+          const isDraggable = dragValidation.canDrag;
+          const restrictionMessage = DragDropHelper.getDragRestrictionMessage(field, 'metadata');
+          
+          return (
+            <div
             key={field.csvColumnName}
-            draggable
-            onDragStart={(e) => onDragStart(e, field.csvColumnName)}
+            draggable={isDraggable}
+            onDragStart={isDraggable ? (e) => onDragStart(e, field.csvColumnName) : undefined}
             onDragOver={onDragOver}
-            onDrop={(e) => onDrop(e, field.csvColumnName)}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDrop(e, field.csvColumnName);
+            }}
             className={cn(
-              'p-4 border border-gray-200 rounded-lg bg-gray-50 transition-all',
-              draggedField === field.csvColumnName && 'opacity-50',
-              'hover:shadow-md cursor-move'
+              'p-4 border border-gray-200 rounded-lg bg-gray-50 transition-all duration-200',
+              draggedField === field.csvColumnName && 'opacity-50 bg-blue-50 border-blue-300',
+              isDraggable ? 'hover:shadow-md hover:bg-gray-100 cursor-move' : 'cursor-default'
             )}
           >
             <div className="flex items-center justify-between mb-2">
@@ -147,28 +176,41 @@ export function MetadataDisplay({
                   )}
                 </Label>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onEditField(field.csvColumnName)}
-                className="h-6 w-6 p-0"
-              >
-                <Edit3 className="h-3 w-3" />
-              </Button>
+              {!field.isPrimaryKey && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onEditField(field.csvColumnName)}
+                  className="h-6 w-6 p-0"
+                >
+                  <Edit3 className="h-3 w-3" />
+                </Button>
+              )}
+              {field.isPrimaryKey && (
+                <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                  Primary Key
+                </div>
+              )}
             </div>
 
             {/* Field Content Display */}
             <div className="space-y-2">
-              {editingField === field.csvColumnName ? (
+              {editingField === field.csvColumnName && !field.isPrimaryKey ? (
                 <div className="space-y-2">
                   <Textarea
                     value={metadata[field.csvColumnName] || ''}
-                    onChange={(e) => onMetadataChange({
-                      ...metadata,
-                      [field.csvColumnName]: e.target.value
-                    })}
-                    className="min-h-[100px]"
+                    onChange={(e) => {
+                      onMetadataChange({
+                        ...metadata,
+                        [field.csvColumnName]: e.target.value
+                      });
+                      // Auto-resize textarea
+                      e.target.style.height = 'auto';
+                      e.target.style.height = Math.max(200, e.target.scrollHeight) + 'px';
+                    }}
+                    className="min-h-[200px] resize-y overflow-hidden"
                     placeholder="Enter content..."
+                    style={{ height: '200px' }}
                   />
                   <div className="flex space-x-2">
                     <Button
@@ -194,18 +236,18 @@ export function MetadataDisplay({
                 <div className="space-y-2">
                   {/* Text Fields */}
                   {field.fieldType === 'text' && (
-                    <div className="p-3 border border-gray-200 rounded-md bg-white">
-                      <div className="text-sm text-gray-800 whitespace-pre-wrap">
+                    <div className={`p-3 border border-gray-200 rounded-md ${field.isPrimaryKey ? 'bg-gray-100' : 'bg-white'}`}>
+                      <div className={`text-sm whitespace-pre-wrap ${field.isPrimaryKey ? 'text-gray-600 font-medium' : 'text-gray-800'}`}>
                         {(() => {
                           const text = formatTextContent(metadata[field.csvColumnName], field.csvColumnName);
                           const isExpanded = expandedTextFields.has(field.csvColumnName);
                           const lines = text.split('\n');
-                          const shouldTruncate = lines.length > 3 && !isExpanded;
+                          const shouldTruncate = lines.length > 8 && !isExpanded;
                           
                           return (
                             <>
-                              {shouldTruncate ? lines.slice(0, 3).join('\n') : text}
-                              {lines.length > 3 && (
+                              {shouldTruncate ? lines.slice(0, 8).join('\n') : text}
+                              {lines.length > 8 && !field.isPrimaryKey && (
                                 <button
                                   onClick={() => onToggleTextExpansion(field.csvColumnName)}
                                   className="text-blue-600 hover:text-blue-800 text-xs ml-2"
@@ -268,16 +310,17 @@ export function MetadataDisplay({
               )}
             </div>
           </div>
-        ))}
+        );
+        })}
 
         {orderedMetadataFields.length === 0 && (
           <div className="text-center text-gray-500 py-8">
             <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
               <span className="text-2xl text-gray-400">📋</span>
             </div>
-            <h3 className="text-lg font-medium mb-2">No Metadata Fields</h3>
+            <h3 className="text-lg font-medium mb-2">No Data Fields</h3>
             <p className="text-sm">
-              Configure metadata fields in the field configuration to see them here.
+              Configure data fields in the field configuration to see them here.
             </p>
           </div>
         )}

@@ -19,6 +19,8 @@ import {
 } from '@/lib/api/csv-processing';
 import { useToast } from '@/components/ui/toast';
 import { useRouter } from 'next/navigation';
+import { CSVImportsAPI } from '@/lib/api/csv-imports';
+import { fieldSelectionAPI } from '@/lib/api/field-config';
 import * as ExcelJS from 'exceljs';
 
 interface CSVUploadComponentProps {
@@ -47,6 +49,7 @@ export function CSVUploadComponent({
     columns: string[];
     sampleRows: Record<string, any>[];
     totalRows: number;
+    duplicateColumns?: string[];
   } | null>(null);
   const [headerValidation, setHeaderValidation] =
     useState<HeaderValidationResult | null>(null);
@@ -159,19 +162,40 @@ export function CSVUploadComponent({
       // Reset form and redirect after successful upload
       setTimeout(() => {
         removeFile();
-        router.push(`/dataset/${selectedDatasetId}`);
+        // Check if this is the first CSV upload by checking existing CSV imports
+        checkAndRedirectAfterUpload();
       }, 2000);
     } catch (error: any) {
       console.error('Upload failed:', error);
       setUploadStatus('error');
+      const serverMessage = error?.response?.data?.message || error?.message;
       showToast({
         type: 'error',
         title: 'Upload Failed',
-        description: 'Failed to upload CSV file. Please try again.',
+        description:
+          typeof serverMessage === 'string'
+            ? serverMessage
+            : 'Failed to upload CSV file. Please try again.',
       });
     } finally {
       setIsUploading(false);
     }
+  };
+
+  // Helper function to find duplicate columns
+  const findDuplicateColumns = (columns: string[]): string[] => {
+    const seen = new Set<string>();
+    const duplicates = new Set<string>();
+    
+    for (const column of columns) {
+      if (seen.has(column)) {
+        duplicates.add(column);
+      } else {
+        seen.add(column);
+      }
+    }
+    
+    return Array.from(duplicates);
   };
 
   const previewCSV = async () => {
@@ -236,7 +260,7 @@ export function CSVUploadComponent({
           .slice(1)
           .map((col: any) => formatExcelValue(col));
 
-        // Get sample rows (rows 2-6)
+        // Get sample rows (rows 2-6) - process once for both duplicate and normal cases
         const sampleRows: Record<string, any>[] = [];
         for (let i = 2; i <= Math.min(6, worksheet.rowCount); i++) {
           const row = worksheet.getRow(i);
@@ -250,10 +274,21 @@ export function CSVUploadComponent({
           sampleRows.push(rowData);
         }
 
+        // Check for duplicate columns
+        const duplicateColumns = findDuplicateColumns(cleanColumns);
+        if (duplicateColumns.length > 0) {
+          showToast({
+            type: 'error',
+            title: 'Duplicate Columns Found',
+            description: `The following columns appear multiple times: ${duplicateColumns.join(', ')}`,
+          });
+        }
+
         setCSVPreview({
           columns: cleanColumns,
           sampleRows,
           totalRows: worksheet.rowCount - 1, // Subtract header row
+          duplicateColumns: duplicateColumns.length > 0 ? duplicateColumns : undefined, // Store duplicate columns info only if found
         });
       } catch (error) {
         console.error('Error parsing Excel file:', error);
@@ -285,6 +320,8 @@ export function CSVUploadComponent({
       const csv = e.target?.result as string;
       const lines = csv.split('\n');
       const columns = lines[0]?.split(',').map((col) => col.trim()) || [];
+      
+      // Process sample rows once for both duplicate and normal cases
       const sampleRows = lines.slice(1, 6).map((line) => {
         const values = line.split(',').map((val) => val.trim());
         const row: Record<string, any> = {};
@@ -294,10 +331,21 @@ export function CSVUploadComponent({
         return row;
       });
 
+      // Check for duplicate columns
+      const duplicateColumns = findDuplicateColumns(columns);
+      if (duplicateColumns.length > 0) {
+        showToast({
+          type: 'error',
+          title: 'Duplicate Columns Found',
+          description: `The following columns appear multiple times: ${duplicateColumns.join(', ')}`,
+        });
+      }
+
       setCSVPreview({
         columns,
         sampleRows,
         totalRows: lines.length - 1,
+        duplicateColumns: duplicateColumns.length > 0 ? duplicateColumns : undefined, // Store duplicate columns info only if found
       });
     };
     reader.readAsText(selectedFile);
@@ -315,7 +363,20 @@ export function CSVUploadComponent({
       setHeaderValidation(validation);
 
       if (showToasts) {
-        if (!validation.isValid) {
+        if (validation.isDuplicate) {
+          showToast({
+            type: 'error',
+            title: 'Duplicate File',
+            description: 'This file already exists in the dataset. Upload is blocked.',
+          });
+        } else if (validation.errors.some(error => error.message.includes('Primary key conflicts detected'))) {
+          const pkError = validation.errors.find(error => error.message.includes('Primary key conflicts detected'));
+          showToast({
+            type: 'error',
+            title: 'Primary Key Conflict',
+            description: pkError?.message || 'Primary key values conflict with existing data.',
+          });
+        } else if (!validation.isValid) {
           showToast({
             type: 'error',
             title: 'Header Validation Failed',
@@ -373,6 +434,30 @@ export function CSVUploadComponent({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const checkAndRedirectAfterUpload = async () => {
+    try {
+      // Check existing CSV imports for this dataset
+      const existingImports = await CSVImportsAPI.getByDataset(selectedDatasetId);
+      
+      // Check if field configuration exists
+      const fieldConfig = await fieldSelectionAPI.checkDatasetFieldConfig(selectedDatasetId);
+      
+      // If this is the first CSV upload and no field config exists, redirect to field config
+      if (existingImports.length === 1 && !fieldConfig.hasConfig) {
+        console.log('First CSV upload detected, redirecting to field configuration');
+        router.push(`/dataset/${selectedDatasetId}?tab=field-configuration`);
+      } else {
+        // For subsequent uploads or if field config already exists, redirect to overview
+        console.log('Subsequent CSV upload or field config exists, redirecting to overview');
+        router.push(`/dataset/${selectedDatasetId}?tab=overview`);
+      }
+    } catch (error) {
+      console.error('Error checking redirect conditions:', error);
+      // Fallback to overview if there's an error
+      router.push(`/dataset/${selectedDatasetId}?tab=overview`);
+    }
+  };
+
   return (
     <div className={cn('space-y-6', className)}>
       {/* Upload Area - Only show when no file is selected */}
@@ -407,12 +492,12 @@ export function CSVUploadComponent({
           <div className="space-y-1">
             <h3 className="text-lg font-medium text-gray-900">
               {isDragOver
-                ? 'Drop CSV file here'
-                : 'Click to upload or drag & drop CSV file'}
+                ? 'Drop files here'
+                : 'Drag & drop files'}
             </h3>
-            <p className="text-sm text-gray-500">
-              Support for CSV files with metadata columns
-            </p>
+             <p className="text-sm text-gray-500">
+               CSV or Excel ( .xlsx, .xls )
+             </p>
           </div>
 
           <Button
@@ -425,7 +510,7 @@ export function CSVUploadComponent({
             }}
           >
             <Upload className="h-4 w-4 mr-2" />
-            Select CSV File
+            Select files
           </Button>
         </div>
 
@@ -446,7 +531,7 @@ export function CSVUploadComponent({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-gray-700">
-              Selected CSV File
+              Selected file
             </h3>
             <Button
               variant="ghost"
@@ -513,55 +598,72 @@ export function CSVUploadComponent({
                 )}
               </div>
 
-              {csvPreview.totalRows === 0 ? (
-                // Error message for failed parsing
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <AlertCircle className="h-4 w-4 text-red-600" />
-                    <span className="text-sm font-medium text-red-900">
-                      Parse Error
-                    </span>
-                  </div>
-                  <p className="text-sm text-red-700">
-                    {csvPreview.sampleRows[0]?.[csvPreview.columns[0]] ||
-                      'Failed to parse file'}
-                  </p>
-                </div>
-              ) : (
-                // File preview table (works for both CSV and Excel)
-                <div className="overflow-x-auto max-h-64">
-                  <table className="min-w-full text-xs">
-                    <thead className="sticky top-0 bg-white">
-                      <tr className="border-b border-gray-200">
-                        {csvPreview.columns.map((column, index) => (
-                          <th
-                            key={index}
-                            className="text-left py-2 px-2 font-medium text-gray-700 max-w-32 truncate"
-                            title={column}
-                          >
-                            {column}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {csvPreview.sampleRows.map((row, rowIndex) => (
-                        <tr key={rowIndex} className="border-b border-gray-100">
-                          {csvPreview.columns.map((column, colIndex) => (
-                            <td
-                              key={colIndex}
-                              className="py-1 px-2 text-gray-600 max-w-32 truncate"
-                              title={row[column] || ''}
-                            >
-                              {row[column] || ''}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+               {csvPreview.totalRows === 0 ? (
+                 // Error message for failed parsing
+                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                   <div className="flex items-center space-x-2 mb-2">
+                     <AlertCircle className="h-4 w-4 text-red-600" />
+                     <span className="text-sm font-medium text-red-900">
+                       Parse Error
+                     </span>
+                   </div>
+                   <p className="text-sm text-red-700">
+                     {csvPreview.sampleRows[0]?.[csvPreview.columns[0]] ||
+                       'Failed to parse file'}
+                   </p>
+                 </div>
+               ) : (
+                 // File preview table (works for both CSV and Excel)
+                 <>
+                   <div className="overflow-x-auto max-h-64">
+                     <table className="min-w-full text-xs">
+                       <thead className="sticky top-0 bg-white">
+                         <tr className="border-b border-gray-200">
+                           {csvPreview.columns.map((column, index) => (
+                             <th
+                               key={index}
+                               className="text-left py-2 px-2 font-medium text-gray-700 max-w-32 truncate"
+                               title={column}
+                             >
+                               {column}
+                             </th>
+                           ))}
+                         </tr>
+                       </thead>
+                       <tbody>
+                         {csvPreview.sampleRows.map((row, rowIndex) => (
+                           <tr key={rowIndex} className="border-b border-gray-100">
+                             {csvPreview.columns.map((column, colIndex) => (
+                               <td
+                                 key={colIndex}
+                                 className="py-1 px-2 text-gray-600 max-w-32 truncate"
+                                 title={row[column] || ''}
+                               >
+                                 {row[column] || ''}
+                               </td>
+                             ))}
+                           </tr>
+                         ))}
+                       </tbody>
+                     </table>
+                   </div>
+                   
+                   {/* Duplicate Column Error Display */}
+                   {csvPreview.duplicateColumns && csvPreview.duplicateColumns.length > 0 && (
+                     <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+                       <div className="flex items-center space-x-2 mb-2">
+                         <AlertCircle className="h-4 w-4 text-red-600" />
+                         <span className="text-sm font-medium text-red-900">
+                           Duplicate Columns Found
+                         </span>
+                       </div>
+                       <p className="text-sm text-red-700">
+                         The following columns appear multiple times: <span className="font-mono bg-red-100 px-1 rounded">{csvPreview.duplicateColumns.join(', ')}</span>. Please fix column names before uploading.
+                       </p>
+                     </div>
+                   )}
+                 </>
+               )}
             </div>
           )}
 
@@ -570,7 +672,7 @@ export function CSVUploadComponent({
             <div
               className={cn(
                 'rounded-lg border p-4',
-                headerValidation.isValid
+                headerValidation.isValid && !headerValidation.isDuplicate
                   ? 'bg-green-50 border-green-200'
                   : 'bg-red-50 border-red-200',
               )}
@@ -589,18 +691,34 @@ export function CSVUploadComponent({
                 <span
                   className={cn(
                     'text-xs px-2 py-1 rounded-full',
-                    headerValidation.isValid
+                    headerValidation.isValid && !headerValidation.isDuplicate
                       ? 'bg-green-100 text-green-800'
                       : 'bg-red-100 text-red-800',
                   )}
                 >
-                  {headerValidation.isValid
+                  {headerValidation.isValid && !headerValidation.isDuplicate
                     ? 'Valid'
-                    : `${headerValidation.errors.length} Error(s)`}
+                    : headerValidation.isDuplicate
+                      ? 'Duplicate File'
+                      : headerValidation.errors.some(error => error.message.includes('Primary key conflicts detected'))
+                        ? 'Primary Key Conflict'
+                        : `${headerValidation.errors.length} Error(s)`}
                 </span>
               </div>
 
-              {headerValidation.isValid ? (
+              {headerValidation.isDuplicate ? (
+                <div className="space-y-3">
+                  <div className="text-sm text-red-700">
+                    <p className="mb-2">❌ Duplicate file detected. Please upload a different file.</p>
+                  </div>
+                </div>
+              ) : headerValidation.errors.some(error => error.message.includes('Primary key conflicts detected')) ? (
+                <div className="space-y-3">
+                  <div className="text-sm text-red-700">
+                    <p className="mb-2">❌ {headerValidation.errors.find(error => error.message.includes('Primary key conflicts detected'))?.message}</p>
+                  </div>
+                </div>
+              ) : headerValidation.isValid ? (
                 <div className="text-sm text-green-700">
                   <p className="mb-2">
                     ✅ CSV headers match existing files in this dataset.
@@ -639,6 +757,14 @@ export function CSVUploadComponent({
                           {error.errorType === 'EXTRA_COLUMN' && (
                             <p className="text-red-600 mt-1">
                               Unexpected column:{' '}
+                              <span className="font-mono bg-red-100 px-1 rounded">
+                                {error.columnName}
+                              </span>
+                            </p>
+                          )}
+                          {error.errorType === 'DUPLICATE_COLUMN' && (
+                            <p className="text-red-600 mt-1">
+                              Duplicate column:{' '}
                               <span className="font-mono bg-red-100 px-1 rounded">
                                 {error.columnName}
                               </span>
@@ -689,7 +815,11 @@ export function CSVUploadComponent({
               disabled={
                 isUploading ||
                 !selectedDatasetId ||
-                headerValidation?.isValid === false
+                headerValidation?.isValid === false ||
+                headerValidation?.isDuplicate === true ||
+                headerValidation?.errors?.some(error => error.message.includes('Primary key conflicts detected')) ||
+                csvPreview?.totalRows === 0 ||
+                (csvPreview?.duplicateColumns && csvPreview.duplicateColumns.length > 0)
               }
             >
               {isUploading ? (
@@ -700,7 +830,7 @@ export function CSVUploadComponent({
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Upload CSV File
+                  Upload file
                 </>
               )}
             </Button>
@@ -724,20 +854,20 @@ export function CSVUploadComponent({
         </div>
       )}
 
-      {/* Supported Formats Info */}
+      {/* File Requirements */}
       <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
         <div className="flex items-center space-x-2 mb-2">
           <FileText className="h-4 w-4 text-blue-600" />
           <span className="text-sm font-medium text-blue-900">
-            Supported CSV Formats
+            File requirements
           </span>
         </div>
-        <div className="grid grid-cols-2 gap-2 text-xs text-blue-700">
-          <div>• CSV files (.csv)</div>
-          <div>• Excel files (.xlsx, .xls)</div>
-          <div>• UTF-8 encoding</div>
-          <div>• Max Size: 50MB</div>
-        </div>
+         <div className="grid grid-cols-2 gap-2 text-xs text-blue-700">
+           <div>Formats: CSV, Excel (.xlsx, .xls)</div>
+           <div>Encoding: UTF‑8</div>
+           <div>Max size: 10 MB per file</div>
+           <div>Notes: Metadata columns supported</div>
+         </div>
       </div>
     </div>
   );

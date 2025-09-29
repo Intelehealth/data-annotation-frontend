@@ -45,6 +45,7 @@ export default function AuthCallbackPage() {
             email: payload.email,
             firstName: payload.firstName,
             lastName: payload.lastName,
+            role: payload.role || 'user',
             isActive: true,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),

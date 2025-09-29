@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { fieldSelectionAPI } from '@/lib/api/field-config';
 import { datasetsAPI } from '@/lib/api/datasets';
@@ -51,7 +51,10 @@ interface AnnotationField {
   fieldName: string;
   fieldType: 'text' | 'image' | 'audio';
   isRequired: boolean;
-  isMetadataField: boolean; // true if it's metadata, false if it needs annotation
+  // true if it needs annotation (shown on right), false if metadata (left)
+  isAnnotationField: boolean;
+  // exactly one field across config can be the primary key
+  isPrimaryKey?: boolean;
   options?: string[];
   isNewColumn?: boolean; // true if this is a new column, not from CSV
   newColumnId?: string; // Reference to NewColumn if isNewColumn is true
@@ -95,6 +98,8 @@ export function FieldConfig({
   );
   const [activeTab, setActiveTab] = useState<'fields'>('fields');
   const [selectedColumns, setSelectedColumns] = useState<Set<string>>(new Set());
+  const [columnValidationErrors, setColumnValidationErrors] = useState<Record<string, string>>({});
+  const [datasetInfo, setDatasetInfo] = useState<{ name: string; description: string } | null>(null);
 
   // Load dataset columns and existing field configuration
   useEffect(() => {
@@ -104,6 +109,7 @@ export function FieldConfig({
     // Load dataset available columns and existing field configuration
     loadDatasetColumns();
     loadExistingFieldConfig();
+    loadDatasetInfo();
   }, [datasetId]);
 
   const loadDatasetColumns = async () => {
@@ -173,20 +179,22 @@ export function FieldConfig({
               fieldName: field.fieldName || '',
               fieldType: field.fieldType || 'text',
               isRequired: Boolean(field.isRequired),
-              isMetadataField: Boolean(field.isMetadataField),
-              isAnnotationField: Boolean(field.isAnnotationField),
+              // prefer explicit isAnnotationField, fallback to inverse of legacy isMetadataField
+              isAnnotationField: typeof field.isAnnotationField === 'boolean'
+                ? Boolean(field.isAnnotationField)
+                : !Boolean(field.isMetadataField),
+              isPrimaryKey: Boolean(field.isPrimaryKey),
               options: field.options || [],
               isNewColumn: Boolean(field.isNewColumn),
               newColumnId: field.newColumnId || undefined,
-            };
+            } as AnnotationField;
+            // Enforce invariant: primary key cannot be an annotation field
+            if (cleanField.isPrimaryKey) {
+              cleanField.isAnnotationField = false;
+            }
             return cleanField;
           },
         );
-
-        // Set all fields as metadata by default (no annotation field validation needed)
-        cleanFields.forEach((field: AnnotationField) => {
-          field.isMetadataField = true;
-        });
 
         setAnnotationFields(cleanFields);
         setNewColumns(config.newColumns || []);
@@ -203,6 +211,20 @@ export function FieldConfig({
     }
   };
 
+  const loadDatasetInfo = async () => {
+    try {
+      console.log('Loading dataset info for header...');
+      const dataset = await datasetsAPI.getById(datasetId);
+      console.log('Dataset info loaded:', dataset);
+      setDatasetInfo({
+        name: dataset.name,
+        description: dataset.description || ''
+      });
+    } catch (err: any) {
+      console.error('Error loading dataset info:', err);
+      setDatasetInfo(null);
+    }
+  };
 
   const updateAnnotationField = (
     id: string,
@@ -221,33 +243,23 @@ export function FieldConfig({
     setHasChanges(true);
   };
 
-  // New function specifically for annotation radio button
-  const selectAnnotationField = (selectedId: string) => {
-    setAnnotationFields((currentFields) => {
-      const newFields = currentFields.map((field) => {
-        const newField = { ...field };
-        if (field.id === selectedId) {
-          newField.isMetadataField = false; // This field will be used for annotation
-        } else {
-          newField.isMetadataField = true; // Other fields are metadata
-        }
-        return newField;
-      });
-      return newFields;
-    });
-    setHasChanges(true);
-  };
 
-  // New function specifically for metadata checkbox
-  const toggleMetadataField = (fieldId: string, isMetadata: boolean) => {
+  // Toggle primary key ensuring exclusivity
+  const togglePrimaryKey = (fieldId: string, makePrimary: boolean) => {
     setAnnotationFields((currentFields) => {
       const newFields = currentFields.map((field) => {
+        const updated = { ...field } as AnnotationField;
         if (field.id === fieldId) {
-          const newField = { ...field };
-          newField.isMetadataField = isMetadata;
-          return newField;
+          updated.isPrimaryKey = makePrimary;
+          // If becoming primary, it cannot be annotated
+          if (makePrimary) {
+            updated.isAnnotationField = false;
+          }
+        } else if (makePrimary) {
+          // Only one primary key allowed
+          updated.isPrimaryKey = false;
         }
-        return { ...field };
+        return updated;
       });
       return newFields;
     });
@@ -282,7 +294,8 @@ export function FieldConfig({
       fieldName: '',
       fieldType: 'text',
       isRequired: false,
-      isMetadataField: false,
+      isAnnotationField: true,
+      isPrimaryKey: false,
       options: [],
       isNewColumn: true,
       newColumnId: newColumn.id,
@@ -300,12 +313,70 @@ export function FieldConfig({
     setHasChanges(true);
   };
 
+  // Validation function to check for duplicate column names
+  const validateColumnName = useCallback((columnName: string, excludeId?: string): { isValid: boolean; error?: string } => {
+    if (!columnName || columnName.trim() === '') {
+      return { isValid: false, error: 'Column name is required' };
+    }
+
+    const trimmedName = columnName.trim();
+    
+    // Debug logging
+    console.log('Validating column name:', trimmedName);
+    console.log('Available CSV columns (first 10):', availableColumns.csvColumns.slice(0, 10).map(col => col.name));
+    console.log('New columns:', newColumns.map(col => col.columnName));
+    console.log('Annotation fields:', annotationFields.map(field => field.csvColumnName));
+    
+    // Check if the exact name exists
+    const exactMatch = availableColumns.csvColumns.find(col => col.name.toLowerCase() === trimmedName.toLowerCase());
+    if (exactMatch) {
+      console.log('EXACT MATCH FOUND:', exactMatch.name);
+    }
+    
+    // Check for duplicates in new columns
+    const duplicateNewColumn = newColumns.find(col => 
+      col.id !== excludeId && col.columnName.toLowerCase() === trimmedName.toLowerCase()
+    );
+    
+    if (duplicateNewColumn) {
+      return { isValid: false, error: `Column name "${trimmedName}" already exists in new columns` };
+    }
+
+    // Check for duplicates in existing CSV columns
+    const duplicateCSVColumn = availableColumns.csvColumns.find(col => 
+      col.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+    
+    if (duplicateCSVColumn) {
+      return { isValid: false, error: `Column name "${trimmedName}" already exists in CSV` };
+    }
+
+    // Check for duplicates in annotation fields (for new columns)
+    const duplicateAnnotationField = annotationFields.find(field => 
+      !field.isNewColumn && field.csvColumnName.toLowerCase() === trimmedName.toLowerCase()
+    );
+    
+    if (duplicateAnnotationField) {
+      return { isValid: false, error: `Column name "${trimmedName}" already exists in annotation fields` };
+    }
+
+    return { isValid: true };
+  }, [newColumns, availableColumns.csvColumns, annotationFields]);
+
+  // Removed debounced validation to prevent stale error states. We rely on immediate validation only.
+
   const removeNewColumn = (id: string) => {
     setNewColumns((columns) => columns.filter((column) => column.id !== id));
     // Also remove any annotation fields that reference this new column
     setAnnotationFields((fields) =>
       fields.filter((field) => field.newColumnId !== id),
     );
+    // Clear validation errors for this column
+    setColumnValidationErrors((errors) => {
+      const newErrors = { ...errors };
+      delete newErrors[id];
+      return newErrors;
+    });
     setHasChanges(true);
   };
 
@@ -319,7 +390,8 @@ export function FieldConfig({
       fieldName: newColumn.columnName,
       fieldType: 'text', // Default to text for new columns
       isRequired: newColumn.isRequired,
-      isMetadataField: false, // Set as metadata by default
+      isAnnotationField: true,
+      isPrimaryKey: false,
       options: [],
       isNewColumn: true,
       newColumnId: newColumnId,
@@ -349,6 +421,45 @@ export function FieldConfig({
       return;
     }
 
+    // Ensure exactly one Primary Key is selected
+    const primaryCount = annotationFields.filter(f => f.isPrimaryKey).length;
+    if (primaryCount !== 1) {
+      showToast({
+        title: 'Validation Error',
+        description: 'Please select exactly one Primary Key field.',
+        type: 'error',
+      });
+      return;
+    }
+
+    // Check for validation errors
+    if (Object.keys(columnValidationErrors).length > 0) {
+      showToast({
+        title: 'Validation Error',
+        description: 'Please fix column name validation errors before saving.',
+        type: 'error',
+      });
+      return;
+    }
+
+    // Validate all new column names before saving
+    const validationErrors: string[] = [];
+    newColumns.forEach(column => {
+      const validation = validateColumnName(column.columnName, column.id);
+      if (!validation.isValid) {
+        validationErrors.push(`${column.columnName}: ${validation.error}`);
+      }
+    });
+
+    if (validationErrors.length > 0) {
+      showToast({
+        title: 'Validation Error',
+        description: `Please fix the following errors:\n${validationErrors.join('\n')}`,
+        type: 'error',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       console.log('Saving field configuration for dataset:', datasetId);
@@ -361,7 +472,8 @@ export function FieldConfig({
           fieldName: field.fieldName,
           fieldType: field.fieldType,
           isRequired: field.isRequired,
-          isMetadataField: field.isMetadataField,
+          isAnnotationField: field.isAnnotationField,
+          isPrimaryKey: field.isPrimaryKey,
           options: field.options,
           isNewColumn: field.isNewColumn,
           newColumnId: field.newColumnId,
@@ -398,15 +510,35 @@ export function FieldConfig({
       if (onNavigateToOverview) {
         onNavigateToOverview();
       } else {
-        router.push(`/dataset/${datasetId}?tab=overview`);
+        router.push(`/dataset/${datasetId}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving field configuration:', error);
-      showToast({
-        title: 'Error',
-        description: 'Failed to save field configuration. Please try again.',
-        type: 'error',
-      });
+      
+      // Extract validation errors from backend response
+      let errorMessage = 'Failed to save field configuration. Please try again.';
+      
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      // If it's a validation error, parse and show specific errors
+      if (errorMessage.includes('Validation errors:')) {
+        const validationErrors = errorMessage.split('\n').slice(1); // Remove "Validation errors:" header
+        showToast({
+          title: 'Validation Error',
+          description: validationErrors.join('\n'),
+          type: 'error',
+        });
+      } else {
+        showToast({
+          title: 'Error',
+          description: errorMessage,
+          type: 'error',
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -430,6 +562,19 @@ export function FieldConfig({
       csvColumnName.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
     );
   };
+
+  // Get all available column names from dataset schema
+  const getAllAvailableColumnNames = useCallback(() => {
+    const csvColumnNames = availableColumns.csvColumns.map(col => col.name.toLowerCase());
+    const manualColumnNames = availableColumns.manualColumns.map(col => col.name.toLowerCase());
+    return [...csvColumnNames, ...manualColumnNames];
+  }, [availableColumns]);
+
+  // Check if a column name is available in the dataset
+  const isColumnNameAvailable = useCallback((columnName: string) => {
+    const availableNames = getAllAvailableColumnNames();
+    return !availableNames.includes(columnName.toLowerCase());
+  }, [getAllAvailableColumnNames]);
 
   // Handle column selection from CSV display
   const handleColumnClick = (columnName: string) => {
@@ -457,7 +602,8 @@ export function FieldConfig({
         fieldName: getSuggestedFieldName(columnName),
         fieldType: 'text',
         isRequired: false,
-        isMetadataField: true,
+        isAnnotationField: false,
+        isPrimaryKey: false,
         options: [],
       };
       
@@ -472,10 +618,10 @@ export function FieldConfig({
       {/* Header */}
       <div className="mb-4">
         <h1 className="text-3xl font-bold text-gray-900">
-          Field Configuration
+          {datasetInfo?.name || 'Field Configuration'}
         </h1>
         <p className="text-gray-600 mt-1">
-          Configure CSV annotation fields and data mapping
+          {'Configure CSV annotation fields and data mapping'}
         </p>
       </div>
 
@@ -530,7 +676,7 @@ export function FieldConfig({
                     if (onNavigateToUpload) {
                       onNavigateToUpload();
                     } else {
-                      router.push(`/dataset/${datasetId}?tab=upload`);
+                      router.push(`/dataset/${datasetId}`);
                     }
                   }}
                   className="bg-blue-600 hover:bg-blue-700"
@@ -554,6 +700,7 @@ export function FieldConfig({
           description="Click on columns below to add them to annotation fields"
         />
       )}
+
 
       {/* Configuration Tabs */}
       {(availableColumns.csvColumns.length > 0 ||
@@ -579,10 +726,11 @@ export function FieldConfig({
                  {annotationFields.length > 0 ? (
                    <div className="space-y-2">
                      {/* Header Row */}
-                     <div className="grid grid-cols-12 gap-3 px-3 py-2 bg-gray-50 rounded-md font-medium text-sm text-gray-600">
-                       <div className="col-span-6">CSV Column</div>
-                       <div className="col-span-4">Type</div>
-                       <div className="col-span-2">Actions</div>
+                    <div className="grid grid-cols-12 gap-3 px-3 py-2 bg-gray-50 rounded-md font-medium text-sm text-gray-600">
+                      <div className="col-span-7">CSV Column</div>
+                      <div className="col-span-3">Type</div>
+                      <div className="col-span-1 text-center">Primary</div>
+                      <div className="col-span-1 text-center">Actions</div>
                      </div>
 
 
@@ -592,27 +740,111 @@ export function FieldConfig({
                        return (
                          <div
                            key={field.id}
-                           className={cn(
-                             "grid grid-cols-12 gap-3 items-center p-3 rounded-md border border-gray-200",
+                          className={cn(
+                            "grid grid-cols-12 gap-3 items-start p-3 rounded-md border border-gray-200",
                              field.isNewColumn ? "bg-gray-200" : "bg-gray-50"
                            )}
                          >
-                             <div className="col-span-6">
+                             <div className="col-span-7">
                                {field.isNewColumn ? (
-                                 <Input
-                                   placeholder="Column name"
-                                   value={newColumn?.columnName || ''}
-                                   onChange={(e) => {
-                                     updateNewColumn(field.newColumnId!, {
-                                       columnName: e.target.value,
-                                     });
-                                     updateAnnotationField(field.id, {
-                                       csvColumnName: e.target.value,
-                                       fieldName: e.target.value,
-                                     });
-                                   }}
-                                   className="h-8 text-sm bg-white border-gray-300"
-                                 />
+                                 <div>
+                                   <div className="space-y-1">
+                                     <Input
+                                       placeholder="Column name"
+                                       value={newColumn?.columnName || ''}
+                                        onChange={(e) => {
+                                          const columnName = e.target.value;
+                                          
+                                          // Update the column immediately for responsive UI
+                                          updateNewColumn(field.newColumnId!, {
+                                            columnName: columnName,
+                                          });
+                                          updateAnnotationField(field.id, {
+                                            csvColumnName: columnName,
+                                            fieldName: columnName,
+                                          });
+
+                                          // Clear validation errors if field is empty
+                                          if (columnName.trim() === '') {
+                                            setColumnValidationErrors(prev => {
+                                              const newErrors = { ...prev };
+                                              delete newErrors[field.newColumnId!];
+                                              return newErrors;
+                                            });
+                                            return;
+                                          }
+
+                                          // Validate with debounce
+                                          const validation = validateColumnName(columnName, field.newColumnId);
+                                          
+                                          // Update validation errors
+                                          if (!validation.isValid) {
+                                            setColumnValidationErrors(prev => ({
+                                              ...prev,
+                                              [field.newColumnId!]: validation.error || ''
+                                            }));
+                                          } else {
+                                            setColumnValidationErrors(prev => {
+                                              const newErrors = { ...prev };
+                                              delete newErrors[field.newColumnId!];
+                                              return newErrors;
+                                            });
+                                          }
+                                        }}
+                                       onBlur={(e) => {
+                                         // Final validation on blur
+                                         const columnName = e.target.value;
+                                         
+                                         // Clear validation errors if field is empty
+                                         if (columnName.trim() === '') {
+                                           setColumnValidationErrors(prev => {
+                                             const newErrors = { ...prev };
+                                             delete newErrors[field.newColumnId!];
+                                             return newErrors;
+                                           });
+                                           return;
+                                         }
+                                         
+                                         const validation = validateColumnName(columnName, field.newColumnId);
+                                         
+                                         if (!validation.isValid) {
+                                           setColumnValidationErrors(prev => ({
+                                             ...prev,
+                                             [field.newColumnId!]: validation.error || ''
+                                           }));
+                                         } else {
+                                           setColumnValidationErrors(prev => {
+                                             const newErrors = { ...prev };
+                                             delete newErrors[field.newColumnId!];
+                                             return newErrors;
+                                           });
+                                         }
+                                       }}
+                                       className={cn(
+                                         "h-8 text-sm bg-white transition-colors",
+                                         columnValidationErrors[field.newColumnId!] 
+                                           ? "border-red-500 focus:border-red-500 focus:ring-red-500" 
+                                           : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                       )}
+                                     />
+                                    {columnValidationErrors[field.newColumnId!] && (
+                                       <div className="flex items-center space-x-1">
+                                         <AlertCircle className="h-3 w-3 text-red-500" />
+                                         <p className="text-xs text-red-500">
+                                          {columnValidationErrors[field.newColumnId!]}
+                                         </p>
+                                       </div>
+                                     )}
+                                    {!columnValidationErrors[field.newColumnId!] && newColumn?.columnName && (
+                                       <div className="flex items-center space-x-1">
+                                         <CheckCircle className="h-3 w-3 text-green-500" />
+                                         <p className="text-xs text-green-600">
+                                           Column name is available
+                                         </p>
+                                       </div>
+                                     )}
+                                   </div>
+                                 </div>
                                ) : (
                                  <div className="flex items-center h-8 px-2 py-1 bg-gray-50 border border-gray-200 rounded text-sm text-gray-700">
                                    {field.csvColumnName}
@@ -620,7 +852,7 @@ export function FieldConfig({
                                )}
                              </div>
 
-                           <div className="col-span-4">
+                           <div className="col-span-3">
                              {field.isNewColumn ? (
                                <div className="flex items-center h-8 px-2 py-1 bg-gray-50 border border-gray-200 rounded text-sm text-gray-700">
                                  Text
@@ -642,7 +874,17 @@ export function FieldConfig({
                              )}
                            </div>
 
-                           <div className="col-span-2 flex items-center justify-center">
+                           {/* Primary Key checkbox */}
+                           <div className="col-span-1 flex items-center justify-center">
+                             <input
+                               type="checkbox"
+                               checked={Boolean(field.isPrimaryKey)}
+                               onChange={(e) => togglePrimaryKey(field.id, e.target.checked)}
+                               disabled={field.isNewColumn}
+                             />
+                           </div>
+
+                           <div className="col-span-1 flex items-center justify-center">
                              <Button
                                variant="ghost"
                                size="sm"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   ChevronLeft,
@@ -11,8 +11,11 @@ import {
   BarChart3,
   Tag,
   Layers,
+  Loader2,
+  Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { datasetsAPI, DatasetResponse } from '@/lib/api/datasets';
 
 interface DatasetSidebarProps {
   activeTab: string;
@@ -28,6 +31,27 @@ export function DatasetSidebar({
   className,
 }: DatasetSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [dataset, setDataset] = useState<DatasetResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadDataset = async () => {
+      try {
+        setLoading(true);
+        const data = await datasetsAPI.getById(datasetId);
+        setDataset(data);
+      } catch (error) {
+        console.error('Error loading dataset:', error);
+        setDataset(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (datasetId) {
+      loadDataset();
+    }
+  }, [datasetId]);
 
   const datasetMenuItems = [
     {
@@ -44,9 +68,15 @@ export function DatasetSidebar({
     },
     {
       id: 'field-configuration',
-      label: 'Field Configuration',
+      label: 'Field configuration',
       icon: FileText,
       description: 'Configure CSV annotation fields',
+    },
+    {
+      id: 'settings',
+      label: 'Settings',
+      icon: Settings,
+      description: 'Manage dataset settings',
     },
   ];
 
@@ -71,9 +101,16 @@ export function DatasetSidebar({
                 <Database className="h-4 w-4 text-white" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-gray-900 truncate">
-                  Dataset {datasetId.slice(0, 8)}...
-                </p>
+                {loading ? (
+                  <div className="flex items-center space-x-2">
+                    <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
+                    <p className="text-sm font-semibold text-gray-500">Loading...</p>
+                  </div>
+                ) : (
+                  <p className="text-sm font-semibold text-gray-900 truncate">
+                    {dataset?.name || `Untitled Dataset`}
+                  </p>
+                )}
                 <p className="text-xs text-gray-500">Data Management</p>
               </div>
             </div>

@@ -3,6 +3,7 @@ import api from '../api';
 // Types for CSV processing API
 export interface CSVUploadResult {
   csvImportId: string;
+  md5Checksum: string;
   fileName: string;
   totalRows: number;
   columns: string[];
@@ -58,7 +59,8 @@ export interface HeaderValidationError {
     | 'MISSING_COLUMN'
     | 'EXTRA_COLUMN'
     | 'COLUMN_ORDER_MISMATCH'
-    | 'COLUMN_NAME_MISMATCH';
+    | 'COLUMN_NAME_MISMATCH'
+    | 'DUPLICATE_COLUMN';
   columnName: string;
   message: string;
   expectedColumnName?: string;
@@ -71,6 +73,8 @@ export interface HeaderValidationResult {
   newHeaders: string[];
   datasetId: string;
   existingImportCount: number;
+  md5Checksum?: string;
+  isDuplicate?: boolean;
 }
 
 // CSV Processing API endpoints

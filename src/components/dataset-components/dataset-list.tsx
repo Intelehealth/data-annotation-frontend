@@ -18,12 +18,17 @@ import {
   Calendar,
   Loader2,
   Trash2,
+  Lock,
+  Globe,
+  Users,
+  Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { datasetsAPI, DatasetResponse } from '@/lib/api/datasets';
 import { DeleteConfirmationDialog } from './delete-confirmation-dialog';
 import { DatasetPagination } from './dataset-pagination';
 import { useToast } from '@/components/ui/toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface DatasetListProps {
   onAddDataset?: () => void;
@@ -40,6 +45,7 @@ export function DatasetList({
 }: DatasetListProps) {
   const router = useRouter();
   const { showToast } = useToast();
+  const { user } = useAuth();
   const [datasets, setDatasets] = useState<DatasetResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -172,6 +178,41 @@ export function DatasetList({
     return colors[type] || 'bg-gray-100 text-gray-800';
   };
 
+  const getAccessTypeIcon = (accessType: string) => {
+    switch (accessType) {
+      case 'private':
+        return <Lock className="h-3 w-3" />;
+      case 'public':
+        return <Globe className="h-3 w-3" />;
+      case 'shared':
+        return <Users className="h-3 w-3" />;
+      default:
+        return <Lock className="h-3 w-3" />;
+    }
+  };
+
+  const getAccessTypeColor = (accessType: string) => {
+    switch (accessType) {
+      case 'private':
+        return 'bg-gray-100 text-gray-700';
+      case 'public':
+        return 'bg-blue-100 text-blue-700';
+      case 'shared':
+        return 'bg-green-100 text-green-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  const isOwner = (dataset: DatasetResponse) => {
+    const userId = typeof dataset.userId === 'string' ? dataset.userId : dataset.userId._id;
+    return userId === user?._id;
+  };
+
+  const isAdmin = () => {
+    return user?.role === 'admin';
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -193,12 +234,12 @@ export function DatasetList({
   }
 
   return (
-    <div className={cn('space-y-6 min-h-0', className)}>
+    <div className={cn('space-y-3 min-h-0', className)}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Datasets</h1>
-          <p className="text-gray-600 mt-1">
+          <p className="text-gray-600 mt-0.5">
             Manage your data annotation datasets
           </p>
         </div>
@@ -242,38 +283,75 @@ export function DatasetList({
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {getCurrentPageDatasets().map((dataset) => (
             <Card
               key={dataset._id}
               className="hover:shadow-lg transition-shadow cursor-pointer"
               onClick={() => handleCardClick(dataset)}
             >
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-1">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <CardTitle className="text-lg font-semibold text-gray-900">
-                      {dataset.name || 'Untitled Dataset'}
-                    </CardTitle>
+                    <div className="flex items-center gap-2 mb-1">
+                      <CardTitle className="text-2xl font-semibold text-gray-900">
+                        {dataset.name || 'Untitled Dataset'}
+                      </CardTitle>
+                      {/* Access Type Badge */}
+                      <span
+                        className={cn(
+                          'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium',
+                          getAccessTypeColor(dataset.accessType || 'private')
+                        )}
+                      >
+                        {getAccessTypeIcon(dataset.accessType || 'private')}
+                        {dataset.accessType || 'private'}
+                      </span>
+                    </div>
                     <CardDescription className="mt-1 text-sm text-gray-600">
                       {dataset.description || 'No description available'}
                     </CardDescription>
+                    {/* Owner info for non-owned datasets */}
+                    {!isOwner(dataset) && (
+                      <div className="mt-1 text-xs text-gray-500">
+                        by {typeof dataset.userId === 'string' ? 'Unknown' : `${dataset.userId.firstName} ${dataset.userId.lastName}`}
+                      </div>
+                    )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteClick(dataset);
-                    }}
-                    className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                     {/* Settings button - for owners and admins */}
+                     {(isOwner(dataset) || isAdmin()) && (
+                       <Button
+                         variant="ghost"
+                         size="sm"
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           router.push(`/dataset/${dataset._id}?tab=settings`);
+                         }}
+                         className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                       >
+                         <Settings className="h-4 w-4" />
+                       </Button>
+                     )}
+                    {/* Delete button - only for owners or admins */}
+                    {(isOwner(dataset) || isAdmin()) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteClick(dataset);
+                        }}
+                        className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="space-y-3">
+                <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span
                       className={cn(
@@ -288,6 +366,15 @@ export function DatasetList({
                     <Calendar className="h-4 w-4" />
                     <span>Created {formatDate(dataset.createdAt)}</span>
                   </div>
+                  {/* Shared users info */}
+                  {dataset.accessType === 'shared' && dataset.sharedWith && dataset.sharedWith.length > 0 && (
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <Users className="h-4 w-4" />
+                      <span>
+                        Shared with {dataset.sharedWith.length} user{dataset.sharedWith.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

@@ -4,17 +4,19 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Sidebar } from '@/components/sidebar';
-import { DatasetManagement } from '@/components/dataset-components/dataset-management';
+import { UsersManagement } from '@/components/users-components/users-management';
 
-export default function DatasetPage() {
+export default function UsersPage() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.push('/login');
+    } else if (!isLoading && isAuthenticated && user?.role !== 'admin') {
+      router.push('/dashboard');
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, user?.role, router]);
 
   if (isLoading) {
     return (
@@ -31,6 +33,10 @@ export default function DatasetPage() {
     return null; // Will redirect to login
   }
 
+  if (user?.role !== 'admin') {
+    return null; // Will redirect to dashboard
+  }
+
   return (
     <div className="h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex overflow-hidden">
       {/* Sidebar */}
@@ -38,8 +44,8 @@ export default function DatasetPage() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
-        <div className="p-4">
-          <DatasetManagement />
+        <div className="p-8">
+          <UsersManagement />
         </div>
       </main>
     </div>
