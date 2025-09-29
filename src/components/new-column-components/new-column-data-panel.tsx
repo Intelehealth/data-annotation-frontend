@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -55,6 +55,7 @@ export function NewColumnDataPanel({
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
   // State for tracking which textarea is currently being edited
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   // Show only fields that require annotation
   const annotationFields = annotationConfig?.annotationFields.filter(
     (field) => field.isAnnotationField
@@ -76,8 +77,6 @@ export function NewColumnDataPanel({
     },
   ];
 
-  const totalCount = completedCount + pendingCount;
-  const completionPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   // Function to toggle text expansion
   const toggleTextExpansion = (fieldName: string) => {
@@ -94,6 +93,7 @@ export function NewColumnDataPanel({
 
   return (
     <div
+      ref={panelRef}
       className="h-full bg-white flex flex-col"
       onDragOver={(e) => {
         if (onPanelDragOver) onPanelDragOver(e);
@@ -112,23 +112,13 @@ export function NewColumnDataPanel({
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">
-            Annoatation
+            Annotation
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              Enter annotation values for the new columns
+              Enter annotation values
             </p>
           </div>
           <div className="flex items-center space-x-4">
-             {/* Progress Indicator (clean bar + counts) */}
-             <div className="flex items-center space-x-3">
-               <span className="text-xs text-gray-500">Progress</span>
-               <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden" role="progressbar" aria-valuenow={completionPercent} aria-valuemin={0} aria-valuemax={100}>
-                 <div className="h-full bg-green-500 rounded-full" style={{ width: `${completionPercent}%` }}></div>
-               </div>
-               <span className="text-sm font-medium text-gray-700">{completionPercent}%</span>
-               <span className="text-xs text-gray-500">({completedCount}/{totalCount})</span>
-             </div>
-
             <ExportDropdown 
               options={exportOptions}
               disabled={isSaving}

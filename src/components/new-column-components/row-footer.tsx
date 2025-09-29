@@ -24,6 +24,8 @@ interface RowFooterProps {
   onNavigateTask: (direction: 'prev' | 'next') => void;
   onJumpToRow: (rowIndex: number) => void;
   onMarkAsCompleted?: (rowIndex: number) => void;
+  completedCount?: number;
+  totalCount?: number;
 }
 
 export function RowFooter({
@@ -32,6 +34,8 @@ export function RowFooter({
   onNavigateTask,
   onJumpToRow,
   onMarkAsCompleted,
+  completedCount,
+  totalCount,
 }: RowFooterProps) {
   const annotatedTasks = tasks.filter(
     (task) => task.status === 'completed',
@@ -40,15 +44,20 @@ export function RowFooter({
     (task) => task.status !== 'completed',
   );
 
+  // Use provided counts or calculate from tasks
+  const finalCompletedCount = completedCount ?? annotatedTasks.length;
+  const finalTotalCount = totalCount ?? tasks.length;
+  const completionPercent = finalTotalCount > 0 ? Math.round((finalCompletedCount / finalTotalCount) * 100) : 0;
+
   return (
       <div className="bg-white border-t border-gray-200 p-4">
         <div className="flex items-center">
-          {/* Left: Row info */}
-          <div className="flex items-center w-1/3">
+          {/* Left: Row info and Progress */}
+          <div className="flex items-center w-1/3 space-x-4">
             <span className="text-sm text-gray-600">
-              Row {tasks[currentTaskIndex]?.rowIndex || currentTaskIndex + 1} of {tasks.length}
+              Total Rows: {tasks.length}
             </span>
-          </div>
+           </div>
 
           {/* Center: Previous + Jump to Row + Next */}
           <div className="flex items-center justify-center space-x-4 flex-1">
@@ -171,30 +180,21 @@ export function RowFooter({
 
           {/* Right: Status Summary */}
           <div className="flex items-center space-x-4 text-sm w-1/3 justify-end">
+            {/* Progress bar */}
             <div className="flex items-center space-x-2">
-              <div className="w-16 bg-gray-200 rounded-full h-2">
-                <div 
-                  className={`h-2 rounded-full transition-all duration-300 ${
-                    annotatedTasks.length === tasks.length ? 'bg-green-500' : 'bg-blue-500'
-                  }`}
-                  style={{ width: `${tasks.length > 0 ? (annotatedTasks.length / tasks.length) * 100 : 0}%` }}
-                />
-              </div>
-              <span className="text-gray-600">{Math.round((annotatedTasks.length / tasks.length) * 100)}%</span>
-            </div>
-            
-            
-            <div className="flex items-center space-x-1">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-gray-600">{annotatedTasks.length} completed</span>
-            </div>
+               <span className="text-xs text-gray-500">Progress</span>
+               <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden" role="progressbar" aria-valuenow={completionPercent} aria-valuemin={0} aria-valuemax={100}>
+                 <div className="h-full bg-green-500 rounded-full transition-all duration-300" style={{ width: `${completionPercent}%` }}></div>
+               </div>
+               <span className="text-xs text-black">{completionPercent}%</span>
+               </div>
             <div className="flex items-center space-x-1">
               <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-              <span className="text-gray-600">{unannotatedTasks.length} pending</span>
+              <span className="text-gray-600">{finalTotalCount - finalCompletedCount} pending</span>
             </div>
             <div className="flex items-center space-x-1">
-              <div className="w-2 h-2 bg-black rounded-full"></div>
-              <span className="text-black font-medium">{tasks.length} total</span>
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className="text-gray-600">{finalCompletedCount} completed</span>
             </div>
           </div>
         </div>

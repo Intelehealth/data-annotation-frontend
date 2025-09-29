@@ -135,7 +135,7 @@ export function MetadataDisplay({
           {datasetName && (
             <span className="text-2xl">{datasetName} - </span>
           )}
-          Data Fields Row {metadata.rowIndex !== undefined ? metadata.rowIndex : 'N/A'}
+          Data Fields
         </h2>
         <p className="text-sm text-gray-500 mt-1">
           Drag fields to reorder • Click edit to modify content

@@ -1242,7 +1242,7 @@ export function DatasetAnnotationWorkbench({
         <ResizablePanels
           leftPanel={
             <MetadataDisplay
-              metadata={{ ...metadata, rowIndex: currentTask?.rowIndex }}
+              metadata={metadata}
               orderedMetadataFields={orderedMetadataFields}
               draggedField={draggedField}
               editingField={editingField}
@@ -1299,6 +1299,8 @@ export function DatasetAnnotationWorkbench({
         onNavigateTask={navigateTask}
         onJumpToRow={jumpToRow}
         onMarkAsCompleted={handleMarkAsCompleted}
+        completedCount={annotatedTasks.length}
+        totalCount={tasks.length}
       />
 
       {/* Image Overlay */}

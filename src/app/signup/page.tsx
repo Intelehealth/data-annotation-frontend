@@ -322,45 +322,6 @@ export default function SignupPage() {
               )}
             </div>
 
-            {/* Terms and Conditions */}
-            <div className="flex items-start space-x-3">
-              <div className="flex items-center h-5 mt-0.5">
-                <input
-                  type="checkbox"
-                  id="agreeToTerms"
-                  {...register('agreeToTerms')}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="text-sm">
-                <Label
-                  htmlFor="agreeToTerms"
-                  className="text-gray-600 leading-relaxed"
-                >
-                  I agree to the{' '}
-                  <Link
-                    href="/terms"
-                    className="text-blue-600 hover:text-blue-700 font-medium underline"
-                  >
-                    Terms of Service
-                  </Link>{' '}
-                  and{' '}
-                  <Link
-                    href="/privacy"
-                    className="text-blue-600 hover:text-blue-700 font-medium underline"
-                  >
-                    Privacy Policy
-                  </Link>
-                </Label>
-              </div>
-            </div>
-            {errors.agreeToTerms && (
-              <p className="text-sm text-red-600">
-                {errors.agreeToTerms.message}
-              </p>
-            )}
-
             {/* Submit Button */}
             <Button
               type="submit"
@@ -395,6 +356,9 @@ export default function SignupPage() {
 
           {/* Google OAuth */}
           <GoogleOAuth mode="signup" disabled={isLoading} />
+
+          {/* Spacing */}
+          <div className="mb-4"></div>
 
           {/* Sign In Link */}
           <div className="text-center">

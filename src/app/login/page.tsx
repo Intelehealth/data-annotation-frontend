@@ -213,27 +213,6 @@ export default function LoginPage() {
               )}
             </div>
 
-            {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="remember"
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
-                  disabled={isLoading}
-                />
-                <Label htmlFor="remember" className="text-sm text-gray-600">
-                  Remember me
-                </Label>
-              </div>
-              <Link
-                href="/forgot-password"
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium underline"
-              >
-                Forgot password?
-              </Link>
-            </div>
-
             {/* Submit Button */}
             <Button
               type="submit"
@@ -268,6 +247,9 @@ export default function LoginPage() {
 
           {/* Google OAuth */}
           <GoogleOAuth mode="login" disabled={isLoading} />
+
+          {/* Spacing */}
+          <div className="mb-4"></div>
 
           {/* Sign Up Link */}
           <div className="text-center">
