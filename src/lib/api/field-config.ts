@@ -61,10 +61,11 @@ export const fieldSelectionAPI = {
     annotationFields: {
       csvColumnName: string;
       fieldName: string;
-      fieldType: 'text' | 'image' | 'audio';
+      fieldType: 'text' | 'number' | 'markdown' | 'image' | 'audio';
       isRequired: boolean;
       isAnnotationField: boolean;
       isPrimaryKey?: boolean;
+      isVisible?: boolean;
       options?: string[];
       isNewColumn?: boolean;
       newColumnId?: string;
@@ -78,7 +79,7 @@ export const fieldSelectionAPI = {
     newColumns: {
       id: string;
       columnName: string;
-      columnType: 'text' | 'number' | 'select' | 'textarea' | 'rating';
+      columnType: 'text' | 'number' | 'select' | 'selectrange' | 'multiselect';
       isRequired: boolean;
       defaultValue?: string;
       options?: string[];

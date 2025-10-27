@@ -1,129 +1,227 @@
 import { jsonApi } from '../api';
 
-export interface AnnotationData {
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  start?: number;
-  end?: number;
-  text?: string;
-  startTime?: number;
-  endTime?: number;
-  transcription?: string;
-  value?: string;
-  [key: string]: any;
+// ============================================
+// INTERFACES
+// ============================================
+
+export interface ImageMetadata {
+  url: string;
+  caption?: string;
+  isSelected: boolean;
+  order: number;
 }
 
-export interface CreateAnnotationRequest {
-  csvImportId: string;
-  userId?: string;
-  csvRowIndex: number;
+export interface SaveImageMetadataRequest {
+  datasetId: string;
+  rowIndex: number;
   fieldName: string;
-  type:
-    | 'BBOX'
-    | 'TEXT_NER'
-    | 'AUDIO_TRANSCRIPTION'
-    | 'CLASSIFICATION'
-    | 'POLYGON'
-    | 'POINT'
-    | 'LINE'
-    | 'NEW_COLUMN_VALUE';
-  label: string;
-  data: AnnotationData;
+  images: ImageMetadata[];
   isAiGenerated?: boolean;
-  confidenceScore?: number;
-  metadata?: Record<string, any>;
 }
 
-export interface Annotation {
+export interface AnnotationResponse {
   _id: string;
-  csvImportId: string;
-  userId?: string;
-  csvRowIndex: number;
+  datasetId: string;
+  rowIndex: number;
   fieldName: string;
-  type: string;
-  label: string;
-  data: AnnotationData;
+  images: ImageMetadata[];
+  userId?: string;
   isAiGenerated: boolean;
-  confidenceScore?: number;
-  metadata?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface AnnotationStats {
-  totalRows: number;
-  annotatedRows: number;
   totalAnnotations: number;
-  annotationsByType: Record<string, number>;
+  annotatedRows: number;
   annotationsByField: Record<string, number>;
+  selectedImagesCount: number;
 }
+
+// ============================================
+// ANNOTATIONS API
+// ============================================
 
 export class AnnotationsAPI {
-  // Create a new annotation
-  static async create(data: CreateAnnotationRequest): Promise<Annotation> {
-    const response = await jsonApi.post('/annotations', data);
-    return response.data;
+  /**
+   * Save or update image metadata annotations for a specific row and field
+   */
+  static async saveImageMetadata(
+    data: SaveImageMetadataRequest
+  ): Promise<AnnotationResponse> {
+    try {
+      const response = await jsonApi.post('/annotations/image-metadata', data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to save image metadata:', error);
+      throw error;
+    }
   }
 
-  // Get all annotations for the current user
-  static async findAll(): Promise<Annotation[]> {
-    const response = await jsonApi.get('/annotations');
-    return response.data;
+  /**
+   * Get all image metadata annotations for a dataset
+   */
+  static async getDatasetAnnotations(
+    datasetId: string
+  ): Promise<AnnotationResponse[]> {
+    try {
+      const response = await jsonApi.get(
+        `/annotations/image-metadata/dataset/${datasetId}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to get dataset annotations:', error);
+      throw error;
+    }
   }
 
-  // Get a specific annotation by ID
-  static async findOne(id: string): Promise<Annotation> {
-    const response = await jsonApi.get(`/annotations/${id}`);
-    return response.data;
+  /**
+   * Get image metadata annotations for a specific field in a dataset
+   */
+  static async getFieldAnnotations(
+    datasetId: string,
+    fieldName: string
+  ): Promise<AnnotationResponse[]> {
+    try {
+      const response = await jsonApi.get(
+        `/annotations/image-metadata/dataset/${datasetId}/field/${fieldName}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to get field annotations:', error);
+      throw error;
+    }
   }
 
-  // Get annotations for a specific CSV import
-  static async findByCSVImport(csvImportId: string): Promise<Annotation[]> {
-    const response = await jsonApi.get(`/annotations/csv/${csvImportId}`);
-    return response.data;
+  /**
+   * Get image metadata annotations for a specific row in a dataset
+   */
+  static async getRowAnnotations(
+    datasetId: string,
+    rowIndex: number
+  ): Promise<AnnotationResponse[]> {
+    try {
+      const response = await jsonApi.get(
+        `/annotations/image-metadata/dataset/${datasetId}/row/${rowIndex}`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to get row annotations:', error);
+      throw error;
+    }
   }
 
-  // Get annotations for a specific CSV row
-  static async findByCSVRow(
-    csvImportId: string,
+  /**
+   * Get image metadata annotation for a specific row and field
+   */
+  static async getRowFieldAnnotation(
+    datasetId: string,
     rowIndex: number,
-  ): Promise<Annotation[]> {
-    const response = await jsonApi.get(
-      `/annotations/csv/${csvImportId}/row/${rowIndex}`,
-    );
-    return response.data;
+    fieldName: string
+  ): Promise<AnnotationResponse | null> {
+    try {
+      const response = await jsonApi.get(
+        `/annotations/image-metadata/dataset/${datasetId}/row/${rowIndex}/field/${fieldName}`
+      );
+      return response.data;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return null; // No annotation found
+      }
+      console.error('❌ Failed to get row field annotation:', error);
+      throw error;
+    }
   }
 
-  // Get annotations for a specific field
-  static async findByField(
-    csvImportId: string,
-    fieldName: string,
-  ): Promise<Annotation[]> {
-    const response = await jsonApi.get(
-      `/annotations/csv/${csvImportId}/field/${fieldName}`,
-    );
-    return response.data;
+  /**
+   * Delete image metadata annotation for a specific row and field
+   */
+  static async deleteAnnotation(
+    datasetId: string,
+    rowIndex: number,
+    fieldName: string
+  ): Promise<void> {
+    try {
+      await jsonApi.delete(
+        `/annotations/image-metadata/dataset/${datasetId}/row/${rowIndex}/field/${fieldName}`
+      );
+    } catch (error) {
+      console.error('❌ Failed to delete annotation:', error);
+      throw error;
+    }
   }
 
-  // Get annotation statistics for a CSV import
-  static async getCSVStats(csvImportId: string): Promise<AnnotationStats> {
-    const response = await jsonApi.get(`/annotations/csv/${csvImportId}/stats`);
-    return response.data;
+  /**
+   * Get annotation statistics for a dataset
+   */
+  static async getDatasetStats(datasetId: string): Promise<AnnotationStats> {
+    try {
+      const response = await jsonApi.get(
+        `/annotations/image-metadata/dataset/${datasetId}/stats`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to get dataset stats:', error);
+      throw error;
+    }
   }
 
-  // Update an annotation
-  static async update(
-    id: string,
-    data: Partial<CreateAnnotationRequest>,
-  ): Promise<Annotation> {
-    const response = await jsonApi.patch(`/annotations/${id}`, data);
-    return response.data;
+  /**
+   * Bulk save annotations for multiple rows
+   */
+  static async bulkSaveAnnotations(
+    annotations: SaveImageMetadataRequest[]
+  ): Promise<AnnotationResponse[]> {
+    try {
+      const response = await jsonApi.post(
+        '/annotations/image-metadata/bulk',
+        { annotations }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to bulk save annotations:', error);
+      throw error;
+    }
   }
 
-  // Delete an annotation
-  static async delete(id: string): Promise<void> {
-    await jsonApi.delete(`/annotations/${id}`);
+  /**
+   * Check if annotation exists for a specific row and field
+   */
+  static async hasAnnotation(
+    datasetId: string,
+    rowIndex: number,
+    fieldName: string
+  ): Promise<boolean> {
+    try {
+      const annotation = await this.getRowFieldAnnotation(
+        datasetId,
+        rowIndex,
+        fieldName
+      );
+      return annotation !== null;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Get annotations progress for dataset
+   */
+  static async getAnnotationProgress(datasetId: string): Promise<{
+    totalRows: number;
+    annotatedRows: number;
+    progressPercentage: number;
+    fieldProgress: Record<string, { annotated: number; total: number }>;
+  }> {
+    try {
+      const response = await jsonApi.get(
+        `/annotations/image-metadata/dataset/${datasetId}/progress`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to get annotation progress:', error);
+      throw error;
+    }
   }
 }
+

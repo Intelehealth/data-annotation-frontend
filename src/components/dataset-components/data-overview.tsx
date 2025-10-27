@@ -16,8 +16,6 @@ import {
   AlertCircle,
   Settings,
   Play,
-  Download,
-  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CSVImport, CSVImportsAPI } from '@/lib/api/csv-imports';
@@ -70,13 +68,10 @@ export function DataOverview({
     try {
       setLoading(true);
       setError(null);
-      console.log('Loading CSV imports for dataset:', datasetId);
 
       const data = await CSVImportsAPI.getByDataset(datasetId);
-      console.log('CSV imports loaded:', data);
       setCsvImports(data);
     } catch (err) {
-      console.error('Error loading CSV imports:', err);
       setError('Failed to load CSV imports');
     } finally {
       setLoading(false);
@@ -86,12 +81,9 @@ export function DataOverview({
   const checkFieldConfiguration = async () => {
     try {
       setCheckingConfig(true);
-      console.log('Checking field configuration for dataset:', datasetId);
       const result = await fieldSelectionAPI.checkDatasetFieldConfig(datasetId);
-      console.log('Field configuration check result:', result);
       setHasFieldConfig(result.hasConfig);
     } catch (err: any) {
-      console.error('Error checking field configuration:', err);
       setHasFieldConfig(false);
     } finally {
       setCheckingConfig(false);
@@ -101,12 +93,9 @@ export function DataOverview({
   const checkMergedRows = async () => {
     try {
       setCheckingMergedRows(true);
-      console.log('Checking merged rows for dataset:', datasetId);
       const hasRows = await DatasetMergedRowsAPI.hasMergedRows(datasetId);
-      console.log('Merged rows check result:', hasRows);
       setHasMergedRows(hasRows);
     } catch (err: any) {
-      console.error('Error checking merged rows:', err);
       setHasMergedRows(false);
     } finally {
       setCheckingMergedRows(false);
@@ -116,12 +105,9 @@ export function DataOverview({
   const checkAnnotationProgress = async () => {
     try {
       setCheckingAnnotationProgress(true);
-      console.log('Checking annotation progress for dataset:', datasetId);
       const progress = await DatasetMergedRowsAPI.getAnnotationProgress(datasetId);
-      console.log('Annotation progress result:', progress);
       setAnnotationProgress(progress);
     } catch (err: any) {
-      console.error('Error checking annotation progress:', err);
       setAnnotationProgress(null);
     } finally {
       setCheckingAnnotationProgress(false);
@@ -130,17 +116,13 @@ export function DataOverview({
 
   const loadDatasetData = async () => {
     try {
-      console.log('Loading dataset data for export functionality...');
       const mergedData = await DatasetMergedRowsAPI.getDatasetData(datasetId);
-      console.log('Dataset data loaded:', mergedData);
       setDatasetData(mergedData);
 
       // Load annotation config
       const config = await fieldSelectionAPI.getDatasetFieldConfig(datasetId);
-      console.log('Annotation config loaded:', config);
       setAnnotationConfig(config);
     } catch (err: any) {
-      console.error('Error loading dataset data:', err);
       setDatasetData(null);
       setAnnotationConfig(null);
     }
@@ -148,15 +130,12 @@ export function DataOverview({
 
   const loadDatasetInfo = async () => {
     try {
-      console.log('Loading dataset info for header...');
       const dataset = await datasetsAPI.getById(datasetId);
-      console.log('Dataset info loaded:', dataset);
       setDatasetInfo({
         name: dataset.name,
         description: dataset.description || ''
       });
     } catch (err: any) {
-      console.error('Error loading dataset info:', err);
       setDatasetInfo(null);
     }
   };
@@ -171,10 +150,6 @@ export function DataOverview({
     const handleFieldConfigSaved = (event: CustomEvent) => {
       // Only refresh if the event is for this dataset
       if (event.detail?.datasetId === datasetId) {
-        console.log(
-          'Field config saved event received for dataset:',
-          datasetId,
-        );
         refreshFieldConfiguration();
       }
     };
@@ -199,7 +174,6 @@ export function DataOverview({
 
   const handleExportSelectedColumns = useCallback(async () => {
     if (!datasetData || !annotationConfig) {
-      console.log('Cannot export: missing dataset data or annotation config');
       return;
     }
 
@@ -225,7 +199,6 @@ export function DataOverview({
             });
           },
           onError: (error) => {
-            console.error('Error exporting selected columns CSV:', error);
             showToast({
               type: 'error',
               title: 'Export Failed',
@@ -235,7 +208,6 @@ export function DataOverview({
         }
       );
     } catch (error) {
-      console.error('Export error:', error);
       showToast({
         type: 'error',
         title: 'Export Failed',
@@ -248,7 +220,6 @@ export function DataOverview({
 
   const handleExportAllColumns = useCallback(async () => {
     if (!datasetData || !annotationConfig) {
-      console.log('Cannot export: missing dataset data or annotation config');
       return;
     }
 
@@ -274,7 +245,6 @@ export function DataOverview({
             });
           },
           onError: (error) => {
-            console.error('Error exporting all columns CSV:', error);
             showToast({
               type: 'error',
               title: 'Export Failed',
@@ -284,7 +254,6 @@ export function DataOverview({
         }
       );
     } catch (error) {
-      console.error('Export error:', error);
       showToast({
         type: 'error',
         title: 'Export Failed',
@@ -337,7 +306,7 @@ export function DataOverview({
         {/* Header with Upload and Configure Fields Buttons */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
+            <h1 className="text-3xl font-bold text-gray-900" data-testid="data-overview-page-title">
               {datasetInfo?.name || 'Data Overview'}
             </h1>
             <p className="text-gray-600 mt-1">
@@ -382,7 +351,7 @@ export function DataOverview({
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
               <Database className="h-8 w-8 text-gray-400" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
+            <h3 className="text-lg font-medium text-gray-900 mb-2" data-testid="data-overview-empty-state">
               No Data Uploaded Yet
             </h3>
             <p className="text-gray-600 text-center mb-6 max-w-md">
@@ -401,7 +370,7 @@ export function DataOverview({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BarChart3 className="h-5 w-5 text-blue-600" />
-              Getting Started
+              <span data-testid="data-overview-getting-started-title">Getting Started</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -452,7 +421,7 @@ export function DataOverview({
       <div className={cn('space-y-6', className)}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
+            <h1 className="text-3xl font-bold text-gray-900" data-testid="data-overview-page-title">
               {datasetInfo?.name || 'Data Overview'}
             </h1>
             <p className="text-gray-600 mt-1">
@@ -492,7 +461,7 @@ export function DataOverview({
         </div>
 
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" data-testid="data-overview-loading-spinner" />
           <span className="ml-2 text-gray-600">Loading data...</span>
         </div>
       </div>
@@ -505,7 +474,7 @@ export function DataOverview({
       <div className={cn('space-y-6', className)}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
+            <h1 className="text-3xl font-bold text-gray-900" data-testid="data-overview-page-title">
               {datasetInfo?.name || 'Data Overview'}
             </h1>
             <p className="text-gray-600 mt-1">
@@ -569,9 +538,9 @@ export function DataOverview({
 
   // View with Existing Data
   return (
-    <div className={cn('space-y-6', className)}>
+    <div className={cn('space-y-6', className)} data-testid="data-overview-container">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" data-testid="data-overview-header">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
             {datasetInfo?.name || 'Data Overview'}
@@ -583,6 +552,7 @@ export function DataOverview({
         <div className="flex items-center gap-3">
           <Button
             onClick={onNavigateToFieldConfig}
+            data-testid="data-overview-configure-fields-button"
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
           >
             <Settings className="h-4 w-4" />
@@ -595,6 +565,7 @@ export function DataOverview({
           <Button
             onClick={handleStartDatasetAnnotation}
             disabled={!hasFieldConfig || checkingConfig || checkingAnnotationProgress}
+            data-testid="data-overview-start-annotation-button"
             className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
             {checkingConfig || checkingAnnotationProgress ? (
@@ -613,7 +584,7 @@ export function DataOverview({
       </div>
 
       {/* CSV Imports List */}
-      <Card>
+      <Card data-testid="data-overview-csv-imports-list">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
@@ -622,6 +593,7 @@ export function DataOverview({
             </CardTitle>
             <Button
               onClick={onNavigateToUpload}
+              data-testid="data-overview-upload-data-button"
               className="flex items-center gap-2 bg-black hover:bg-gray-800 text-white"
             >
               <Upload className="h-4 w-4" />
@@ -635,6 +607,7 @@ export function DataOverview({
               <div
                 key={csvImport._id}
                 className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors group"
+                data-testid={`data-overview-file-card-${csvImport._id}`}
               >
                 <div className="flex items-center space-x-4">
                   <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -671,7 +644,7 @@ export function DataOverview({
             <div className="flex justify-center pt-6 border-t border-gray-100">
               <div className="text-center space-y-3">
                 <div>
-                  <h4 className="text-sm font-medium text-gray-900 mb-1">
+                  <h4 className="text-sm font-medium text-gray-900 mb-1" data-testid="data-overview-configure-fields-prompt">
                     Ready to Start Annotating?
                   </h4>
                   <p className="text-xs text-gray-600 mb-3">

@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
+import { useToast } from '@/components/ui/toast';
 
 interface GoogleOAuthProps {
   mode: 'login' | 'signup';
@@ -10,10 +11,12 @@ interface GoogleOAuthProps {
 }
 
 export default function GoogleOAuth({
-  mode,
+  mode: _mode,
   disabled = false,
   className = '',
 }: GoogleOAuthProps) {
+  const { showToast } = useToast();
+
   const handleGoogleAuth = () => {
     try {
       // Redirect to backend Google OAuth endpoint
@@ -21,7 +24,11 @@ export default function GoogleOAuth({
         process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
       window.location.href = `${backendUrl}/auth/google`;
     } catch (error) {
-      console.error('Google OAuth error:', error);
+      showToast({
+        type: 'error',
+        title: 'Authentication Error',
+        description: 'Failed to initiate Google authentication. Please try again.',
+      });
     }
   };
 
@@ -33,6 +40,7 @@ export default function GoogleOAuth({
         className="w-full h-10 border-2 border-gray-200 hover:bg-gray-50 hover:border-gray-300 rounded-xl transition-all duration-200 text-sm"
         disabled={disabled}
         onClick={handleGoogleAuth}
+        data-testid="google-oauth-button"
       >
         <Image
           src="/svg/google.svg"

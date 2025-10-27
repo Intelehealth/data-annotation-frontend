@@ -36,7 +36,7 @@ export function CSVColumnsDisplay({
           <div className="flex items-center space-x-2">
             <Database className="h-4 w-4 text-blue-600" />
             <div>
-              <CardTitle className="text-base">{title}</CardTitle>
+              <CardTitle className="text-base" data-testid="csv-columns-display-title">{title}</CardTitle>
               <p className="text-xs text-gray-600 mt-1">{description}</p>
             </div>
           </div>
@@ -51,7 +51,7 @@ export function CSVColumnsDisplay({
           {/* CSV Columns */}
           {csvColumns.length > 0 && (
             <div>
-              <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+              <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center" data-testid="csv-columns-section-title">
                 <FileText className="h-4 w-4 mr-2 text-blue-600" />
                 CSV Columns ({csvColumns.length})
               </h4>
@@ -63,6 +63,7 @@ export function CSVColumnsDisplay({
                       <span
                         key={column.name}
                         onClick={() => onColumnClick(column.name)}
+                        data-testid={`csv-column-${column.name}`}
                         className={cn(
                           "px-3 py-1 text-sm border text-center truncate rounded-sm cursor-pointer transition-all duration-200 hover:scale-105",
                           isSelected

@@ -16,7 +16,6 @@ import {
   Shield,
   Users,
   Zap,
-  CheckCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,7 +33,6 @@ export default function SignupPage() {
     register,
     handleSubmit,
     formState: { errors, isValid },
-    watch,
   } = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
     mode: 'onChange',
@@ -70,7 +68,7 @@ export default function SignupPage() {
 
         <div className="relative z-10 text-white pl-4 lg:pl-8">
           <div className="mb-8">
-            <h1 className="text-3xl lg:text-4xl xl:text-5xl font-bold mb-4 leading-tight">
+            <h1 className="text-3xl lg:text-4xl xl:text-5xl font-bold mb-4 leading-tight" data-testid="admin-portal-title">
               Admin Portal
               <span className="block text-blue-100">Registration</span>
             </h1>
@@ -87,7 +85,7 @@ export default function SignupPage() {
                 <Zap className="w-6 h-6 text-blue-100" />
               </div>
               <div>
-                <h3 className="font-semibold text-white text-lg mb-1">
+                <h3 className="font-semibold text-white text-lg mb-1" data-testid="full-system-control-title">
                   Full System Control
                 </h3>
                 <p className="text-blue-100 text-sm leading-relaxed">
@@ -135,14 +133,14 @@ export default function SignupPage() {
         <div className="max-w-md mx-auto w-full">
           {/* Header */}
           <div className="text-center mb-6">
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">
+            <h2 className="text-3xl font-bold text-gray-900 mb-2" data-testid="create-admin-account-title">
               Create Admin Account
             </h2>
           </div>
 
           {/* Error Message */}
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl" data-testid="admin-signup-error-message">
               <p className="text-sm text-red-600 flex items-center">
                 <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
                 {error}
@@ -167,6 +165,7 @@ export default function SignupPage() {
                     type="text"
                     placeholder="First name"
                     {...register('firstName')}
+                    data-testid="admin-signup-first-name-input"
                     className={`pl-12 h-11 border-2 focus:ring-4 focus:ring-blue-100 rounded-xl text-sm transition-all duration-200 ${
                       errors.firstName
                         ? 'border-red-300 focus:border-red-500'
@@ -176,7 +175,7 @@ export default function SignupPage() {
                   />
                 </div>
                 {errors.firstName && (
-                  <p className="text-sm text-red-600">
+                  <p className="text-sm text-red-600" data-testid="validation-error-first-name">
                     {errors.firstName.message}
                   </p>
                 )}
@@ -195,6 +194,7 @@ export default function SignupPage() {
                     type="text"
                     placeholder="Last name"
                     {...register('lastName')}
+                    data-testid="admin-signup-last-name-input"
                     className={`pl-12 h-11 border-2 focus:ring-4 focus:ring-blue-100 rounded-xl text-sm transition-all duration-200 ${
                       errors.lastName
                         ? 'border-red-300 focus:border-red-500'
@@ -204,7 +204,7 @@ export default function SignupPage() {
                   />
                 </div>
                 {errors.lastName && (
-                  <p className="text-sm text-red-600">
+                  <p className="text-sm text-red-600" data-testid="validation-error-last-name">
                     {errors.lastName.message}
                   </p>
                 )}
@@ -226,6 +226,7 @@ export default function SignupPage() {
                   type="email"
                   placeholder="Enter your email"
                   {...register('email')}
+                  data-testid="admin-signup-email-input"
                   className={`pl-12 h-11 border-2 focus:ring-4 focus:ring-blue-100 rounded-xl text-sm transition-all duration-200 ${
                     errors.email
                       ? 'border-red-300 focus:border-red-500'
@@ -235,7 +236,7 @@ export default function SignupPage() {
                 />
               </div>
               {errors.email && (
-                <p className="text-sm text-red-600">{errors.email.message}</p>
+                <p className="text-sm text-red-600" data-testid="validation-error-email">{errors.email.message}</p>
               )}
             </div>
 
@@ -254,6 +255,7 @@ export default function SignupPage() {
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Create a strong password"
                   {...register('password')}
+                  data-testid="admin-signup-password-input"
                   className={`pl-12 pr-12 h-11 border-2 focus:ring-4 focus:ring-blue-100 rounded-xl text-sm transition-all duration-200 ${
                     errors.password
                       ? 'border-red-300 focus:border-red-500'
@@ -264,6 +266,7 @@ export default function SignupPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  data-testid="admin-signup-show-password-button"
                   className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200"
                   disabled={isLoading}
                 >
@@ -275,7 +278,7 @@ export default function SignupPage() {
                 </button>
               </div>
               {errors.password && (
-                <p className="text-sm text-red-600">
+                <p className="text-sm text-red-600" data-testid="validation-error-password">
                   {errors.password.message}
                 </p>
               )}
@@ -296,6 +299,7 @@ export default function SignupPage() {
                   type={showConfirmPassword ? 'text' : 'password'}
                   placeholder="Confirm your password"
                   {...register('confirmPassword')}
+                  data-testid="admin-signup-confirm-password-input"
                   className={`pl-12 pr-12 h-11 border-2 focus:ring-4 focus:ring-blue-100 rounded-xl text-sm transition-all duration-200 ${
                     errors.confirmPassword
                       ? 'border-red-300 focus:border-red-500'
@@ -317,7 +321,7 @@ export default function SignupPage() {
                 </button>
               </div>
               {errors.confirmPassword && (
-                <p className="text-sm text-red-600">
+                <p className="text-sm text-red-600" data-testid="validation-error-confirm-password">
                   {errors.confirmPassword.message}
                 </p>
               )}
@@ -327,11 +331,12 @@ export default function SignupPage() {
             <Button
               type="submit"
               disabled={!isValid || isLoading}
+              data-testid="admin-signup-submit-button"
               className="w-full h-10 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-xl transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-sm shadow-lg hover:shadow-xl"
             >
               {isLoading ? (
                 <div className="flex items-center">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" data-testid="admin-signup-loading-spinner"></div>
                   Creating Admin Account...
                 </div>
               ) : (
@@ -356,7 +361,9 @@ export default function SignupPage() {
           </div>
 
           {/* Google OAuth Admin */}
-          <GoogleOAuthAdmin disabled={isLoading} />
+          <div data-testid="admin-signup-google-button">
+            <GoogleOAuthAdmin disabled={isLoading} />
+          </div>
 
           {/* Spacing */}
           <div className="mb-4"></div>
@@ -368,6 +375,7 @@ export default function SignupPage() {
               <Link
                 href="/login"
                 className="text-blue-600 hover:text-blue-700 font-medium underline"
+                data-testid="admin-signup-login-link"
               >
                 Sign in here
               </Link>

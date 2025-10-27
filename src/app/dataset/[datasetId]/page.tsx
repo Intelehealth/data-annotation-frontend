@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { datasetsAPI, DatasetResponse } from '@/lib/api/datasets';
 import { Button } from '@/components/ui/button';
@@ -19,22 +19,11 @@ import { FieldConfig } from '@/components/field-config-components/field-config';
 import { DatasetSettings } from '@/components/dataset-components/dataset-settings';
 import { Sidebar } from '@/components/sidebar';
 import {
-  ArrowLeft,
   Database,
-  Calendar,
-  FileText,
-  Image,
-  AudioLines,
   Loader2,
   Upload,
 } from 'lucide-react';
 
-const datasetTypeIcons = {
-  text: FileText,
-  image: Image,
-  audio: AudioLines,
-  multimodal: Database,
-};
 
 export default function DatasetDetailPage() {
   const params = useParams();
@@ -63,32 +52,25 @@ export default function DatasetDetailPage() {
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    if (datasetId && isAuthenticated) {
-      loadDataset();
-    }
-  }, [datasetId, isAuthenticated]);
-
-  const loadDataset = async () => {
+  const loadDataset = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const data = await datasetsAPI.getById(datasetId);
       setDataset(data);
-    } catch (err) {
+    } catch {
       setError('Failed to load dataset');
     } finally {
       setLoading(false);
     }
-  };
+  }, [datasetId]);
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
+  useEffect(() => {
+    if (datasetId && isAuthenticated) {
+      loadDataset();
+    }
+  }, [datasetId, isAuthenticated, loadDataset]);
+
 
   const renderContent = () => {
     if (!dataset) {
@@ -122,10 +104,10 @@ export default function DatasetDetailPage() {
             {/* Header */}
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">
+                <h1 className="text-3xl font-bold text-gray-900" data-testid="dataset-detail-title">
                 {dataset.name}
                 </h1>
-                <p className="text-gray-600 mt-1">
+                <p className="text-gray-600 mt-1" data-testid="dataset-detail-description">
                   Add new files to this dataset.
                 </p>
               </div>
@@ -145,12 +127,7 @@ export default function DatasetDetailPage() {
               <CardContent>
                 <DatasetUploadComponent
                   datasetId={datasetId}
-                  onCSVUploaded={(csvImportId, fileName, totalRows) => {
-                    console.log('CSV uploaded:', {
-                      csvImportId,
-                      fileName,
-                      totalRows,
-                    });
+                  onCSVUploaded={() => {
                     // Refresh the data overview to show new CSV
                     setRefreshTrigger((prev) => prev + 1);
                     // Let CSVUploadComponent handle the redirection logic
@@ -178,10 +155,10 @@ export default function DatasetDetailPage() {
         return (
           <div className="space-y-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">
+              <h1 className="text-3xl font-bold text-gray-900" data-testid="dataset-detail-title">
                 {dataset.name}
               </h1>
-              <p className="text-gray-600 mt-1">{dataset.description}</p>
+              <p className="text-gray-600 mt-1" data-testid="dataset-detail-description">{dataset.description}</p>
             </div>
 
             <Card>
@@ -225,7 +202,7 @@ export default function DatasetDetailPage() {
       <div className="flex h-screen bg-gray-50 items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
-          <Button onClick={loadDataset} variant="outline">
+          <Button onClick={loadDataset} variant="outline" data-testid="dataset-detail-retry-button">
             Try Again
           </Button>
         </div>
@@ -242,9 +219,9 @@ export default function DatasetDetailPage() {
             Dataset not found
           </h3>
           <p className="text-gray-600 mb-4">
-            The dataset you're looking for doesn't exist.
+            The dataset you&apos;re looking for doesn&apos;t exist.
           </p>
-          <Button onClick={() => router.push('/dataset')}>
+          <Button onClick={() => router.push('/dataset')} data-testid="dataset-detail-back-button">
             Back to Datasets
           </Button>
         </div>
@@ -253,7 +230,7 @@ export default function DatasetDetailPage() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50" data-testid="dataset-detail-page">
       {/* Main Sidebar - Force collapsed state for dataset detail pages */}
       <Sidebar forceCollapsed={true} />
 
@@ -265,7 +242,7 @@ export default function DatasetDetailPage() {
       />
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto" data-testid="dataset-detail-main-content">
         <div className="p-6">{renderContent()}</div>
       </main>
     </div>

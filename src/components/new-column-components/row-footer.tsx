@@ -50,7 +50,7 @@ export function RowFooter({
   const completionPercent = finalTotalCount > 0 ? Math.round((finalCompletedCount / finalTotalCount) * 100) : 0;
 
   return (
-      <div className="bg-white border-t border-gray-200 p-4">
+      <div className="bg-white border-t border-gray-200 p-4" data-testid="annotation-workbench-row-footer">
         <div className="flex items-center">
           {/* Left: Row info and Progress */}
           <div className="flex items-center w-1/3 space-x-4">
@@ -64,6 +64,7 @@ export function RowFooter({
             <Button
               onClick={() => onNavigateTask('prev')}
               disabled={currentTaskIndex === 0}
+              data-testid="row-footer-previous-button"
               className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="h-4 w-4 mr-1" />
@@ -78,6 +79,7 @@ export function RowFooter({
                   <button
                     key={task.rowIndex}
                     onClick={() => onJumpToRow(task.rowIndex)}
+                    data-testid={`row-footer-button-${task.rowIndex}`}
                     className={cn(
                       'px-2 py-1 text-xs rounded transition-colors',
                       index === currentTaskIndex
@@ -99,6 +101,7 @@ export function RowFooter({
                     <>
                       <button
                         onClick={() => onJumpToRow(tasks[0].rowIndex)}
+                        data-testid={`row-footer-button-${tasks[0].rowIndex}`}
                         className={
                           cn(
                             'px-2 py-1 text-xs rounded transition-colors',
@@ -129,6 +132,7 @@ export function RowFooter({
                       <button
                         key={task.rowIndex}
                         onClick={() => onJumpToRow(task.rowIndex)}
+                        data-testid={`row-footer-button-${task.rowIndex}`}
                         className={cn(
                           'px-2 py-1 text-xs rounded transition-colors',
                           taskIndex === currentTaskIndex
@@ -150,6 +154,7 @@ export function RowFooter({
                       {currentTaskIndex < tasks.length - 4 && <span className="text-xs text-gray-500 px-1">...</span>}
                       <button
                         onClick={() => onJumpToRow(tasks[tasks.length - 1].rowIndex)}
+                        data-testid={`row-footer-button-${tasks[tasks.length - 1].rowIndex}`}
                         className={cn(
                           'px-2 py-1 text-xs rounded transition-colors',
                           currentTaskIndex === tasks.length - 1
@@ -171,6 +176,7 @@ export function RowFooter({
             <Button
               onClick={() => onNavigateTask('next')}
               disabled={currentTaskIndex === tasks.length - 1}
+              data-testid="row-footer-next-button"
               className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               Next
@@ -183,18 +189,18 @@ export function RowFooter({
             {/* Progress bar */}
             <div className="flex items-center space-x-2">
                <span className="text-xs text-gray-500">Progress</span>
-               <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden" role="progressbar" aria-valuenow={completionPercent} aria-valuemin={0} aria-valuemax={100}>
+               <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden" role="progressbar" aria-valuenow={completionPercent} aria-valuemin={0} aria-valuemax={100} data-testid="row-footer-progress-bar">
                  <div className="h-full bg-green-500 rounded-full transition-all duration-300" style={{ width: `${completionPercent}%` }}></div>
                </div>
-               <span className="text-xs text-black">{completionPercent}%</span>
+               <span className="text-xs text-black" data-testid="row-footer-progress-text">{completionPercent}%</span>
                </div>
             <div className="flex items-center space-x-1">
               <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-              <span className="text-gray-600">{finalTotalCount - finalCompletedCount} pending</span>
+              <span className="text-gray-600" data-testid="row-footer-pending-count">{finalTotalCount - finalCompletedCount} pending</span>
             </div>
             <div className="flex items-center space-x-1">
               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-gray-600">{finalCompletedCount} completed</span>
+              <span className="text-gray-600" data-testid="row-footer-completed-count">{finalCompletedCount} completed</span>
             </div>
           </div>
         </div>

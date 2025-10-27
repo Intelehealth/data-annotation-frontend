@@ -64,6 +64,7 @@ export function DatasetPagination({
           disabled={currentPage === 1}
           variant="outline"
           size="sm"
+          data-testid="pagination-previous-button"
           className="flex items-center space-x-1 transition-all duration-200 hover:scale-105"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -87,6 +88,7 @@ export function DatasetPagination({
               <button
                 key={pageNumber}
                 onClick={() => onPageChange(pageNumber)}
+                data-testid={`pagination-page-button-${pageNumber}`}
                 className={cn(
                   'px-3 py-2 text-sm rounded-md transition-all duration-200 hover:scale-105',
                   isCurrentPage
@@ -105,6 +107,7 @@ export function DatasetPagination({
           disabled={currentPage === totalPages}
           variant="outline"
           size="sm"
+          data-testid="pagination-next-button"
           className="flex items-center space-x-1 transition-all duration-200 hover:scale-105"
         >
           <span>Next</span>

@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
+import { useToast } from '@/components/ui/toast';
 
 interface GoogleOAuthAdminProps {
   disabled?: boolean;
@@ -12,6 +13,8 @@ export default function GoogleOAuthAdmin({
   disabled = false,
   className = '',
 }: GoogleOAuthAdminProps) {
+  const { showToast } = useToast();
+
   const handleGoogleAdminAuth = () => {
     try {
       // Redirect to backend Google Admin OAuth endpoint
@@ -19,7 +22,11 @@ export default function GoogleOAuthAdmin({
         process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
       window.location.href = `${backendUrl}/auth/google/admin`;
     } catch (error) {
-      console.error('Google Admin OAuth error:', error);
+      showToast({
+        title: 'Authentication Error',
+        description: 'Failed to initiate Google Admin authentication. Please try again.',
+        type: 'error',
+      });
     }
   };
 
@@ -31,6 +38,7 @@ export default function GoogleOAuthAdmin({
         className="w-full h-10 border-2 border-gray-200 hover:bg-gray-50 hover:border-gray-300 rounded-xl transition-all duration-200 text-sm"
         disabled={disabled}
         onClick={handleGoogleAdminAuth}
+        data-testid="google-oauth-admin-button"
       >
         <Image
           src="/svg/google.svg"

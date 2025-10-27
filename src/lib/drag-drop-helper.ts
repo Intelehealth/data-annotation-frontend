@@ -1,4 +1,4 @@
-import { AnnotationField, AnnotationConfig } from '@/lib/api/csv-imports';
+import { AnnotationField, AnnotationConfig } from '@/lib/api/dataset-annotation-types';
 
 export interface DragDropResult {
   success: boolean;
@@ -37,9 +37,22 @@ export class DragDropHelper {
         };
       }
 
-      // Find the dragged field data
-      const draggedFieldData = annotationConfig.annotationFields.find(f => f.csvColumnName === draggedField);
+      // Find the dragged field data - check both csvColumnName and fieldName
+      const draggedFieldData = annotationConfig.annotationFields.find(f => 
+        f.csvColumnName === draggedField || 
+        f.fieldName === draggedField ||
+        f.csvColumnName?.toLowerCase() === draggedField.toLowerCase() ||
+        f.fieldName?.toLowerCase() === draggedField.toLowerCase()
+      );
+      
       if (!draggedFieldData) {
+        console.warn('Dragged field not found:', {
+          draggedField,
+          availableFields: annotationConfig.annotationFields.map(f => ({ 
+            csv: f.csvColumnName, 
+            field: f.fieldName 
+          }))
+        });
         return {
           success: false,
           message: 'Dragged field not found in configuration',
@@ -48,9 +61,14 @@ export class DragDropHelper {
       }
 
       // Determine operation type
-      const operationType = this.determineOperationType(draggedFieldData, targetPanel, targetFieldName);
+      const operationType = this.determineOperationType(draggedFieldData, targetPanel);
 
-      console.log('DragDropHelper - Operation type:', operationType);
+      console.log('DragDrop operation:', { 
+        operationType, 
+        draggedField: draggedFieldData.fieldName,
+        targetFieldName,
+        targetPanel 
+      });
 
       // Execute the appropriate operation
       switch (operationType) {
@@ -61,9 +79,23 @@ export class DragDropHelper {
           return this.handleCrossPanelMove(draggedFieldData, 'annotation-to-metadata', annotationConfig, orderedMetadataFields);
 
         case 'INTERNAL_METADATA_REORDER':
+          if (!targetFieldName || targetFieldName.trim() === '') {
+            return {
+              success: false,
+              message: 'Target field name is required for reordering',
+              error: 'MISSING_TARGET'
+            };
+          }
           return this.handleInternalReorder(draggedFieldData, targetFieldName, 'metadata', annotationConfig, orderedMetadataFields);
 
         case 'INTERNAL_ANNOTATION_REORDER':
+          if (!targetFieldName || targetFieldName.trim() === '') {
+            return {
+              success: false,
+              message: 'Target field name is required for reordering',
+              error: 'MISSING_TARGET'
+            };
+          }
           return this.handleInternalReorder(draggedFieldData, targetFieldName, 'annotation', annotationConfig, orderedMetadataFields);
 
         default:
@@ -74,7 +106,7 @@ export class DragDropHelper {
           };
       }
     } catch (error) {
-      console.error('DragDropHelper error:', error);
+      console.error('DragDrop error:', error);
       return {
         success: false,
         message: 'An unexpected error occurred during drag operation',
@@ -88,8 +120,7 @@ export class DragDropHelper {
    */
   private static determineOperationType(
     draggedField: AnnotationField,
-    targetPanel: 'metadata' | 'annotation',
-    targetFieldName: string
+    targetPanel: 'metadata' | 'annotation'
   ): string {
     const isCrossPanelMove = 
       (targetPanel === 'annotation' && !draggedField.isAnnotationField) ||
@@ -117,7 +148,7 @@ export class DragDropHelper {
     draggedField: AnnotationField,
     direction: 'metadata-to-annotation' | 'annotation-to-metadata',
     annotationConfig: AnnotationConfig,
-    orderedMetadataFields: AnnotationField[]
+    _orderedMetadataFields: AnnotationField[]
   ): DragDropResult {
     // Validation based on direction
     if (direction === 'metadata-to-annotation') {
@@ -195,8 +226,11 @@ export class DragDropHelper {
     annotationConfig: AnnotationConfig,
     orderedMetadataFields: AnnotationField[]
   ): DragDropResult {
-    // Prevent self-drop
-    if (draggedField.csvColumnName === targetFieldName) {
+    // Prevent self-drop - check both csvColumnName and fieldName
+    if (draggedField.csvColumnName === targetFieldName || 
+        draggedField.fieldName === targetFieldName ||
+        draggedField.csvColumnName?.toLowerCase() === targetFieldName.toLowerCase() ||
+        draggedField.fieldName?.toLowerCase() === targetFieldName.toLowerCase()) {
       return {
         success: false,
         message: 'Cannot drop field on itself',
@@ -219,11 +253,34 @@ export class DragDropHelper {
     targetFieldName: string,
     orderedMetadataFields: AnnotationField[]
   ): DragDropResult {
-    // Find indices
-    const draggedIndex = orderedMetadataFields.findIndex(field => field.csvColumnName === draggedField.csvColumnName);
-    const targetIndex = orderedMetadataFields.findIndex(field => field.csvColumnName === targetFieldName);
+    // Find indices - check both csvColumnName and fieldName with case-insensitive matching
+    const draggedIndex = orderedMetadataFields.findIndex(field => 
+      field.csvColumnName === draggedField.csvColumnName ||
+      field.fieldName === draggedField.csvColumnName ||
+      field.csvColumnName === draggedField.fieldName ||
+      field.fieldName === draggedField.fieldName ||
+      field.csvColumnName?.toLowerCase() === draggedField.csvColumnName?.toLowerCase() ||
+      field.fieldName?.toLowerCase() === draggedField.csvColumnName?.toLowerCase() ||
+      field.csvColumnName?.toLowerCase() === draggedField.fieldName?.toLowerCase() ||
+      field.fieldName?.toLowerCase() === draggedField.fieldName?.toLowerCase()
+    );
+    const targetIndex = orderedMetadataFields.findIndex(field => 
+      field.csvColumnName === targetFieldName ||
+      field.fieldName === targetFieldName ||
+      field.csvColumnName?.toLowerCase() === targetFieldName.toLowerCase() ||
+      field.fieldName?.toLowerCase() === targetFieldName.toLowerCase()
+    );
 
     if (draggedIndex === -1 || targetIndex === -1) {
+      console.warn('DragDrop: Field not found in metadata', {
+        searching: {
+          dragged: draggedField.csvColumnName || draggedField.fieldName || '(empty)',
+          target: targetFieldName || '(empty)'
+        },
+        draggedNotFound: draggedIndex === -1,
+        targetNotFound: targetIndex === -1,
+        availableFields: orderedMetadataFields.map(f => `${f.fieldName} (${f.csvColumnName})`)
+      });
       return {
         success: false,
         message: 'Could not find dragged or target field in metadata list',
@@ -254,11 +311,36 @@ export class DragDropHelper {
     // Get all annotation fields
     const allFields = [...annotationConfig.annotationFields];
     
-    // Find indices in the full array
-    const draggedFieldIndex = allFields.findIndex((field) => field.csvColumnName === draggedField.csvColumnName);
-    const targetFieldIndex = allFields.findIndex((field) => field.csvColumnName === targetFieldName);
+    // Find indices in the full array - check both csvColumnName and fieldName with case-insensitive matching
+    const draggedFieldIndex = allFields.findIndex((field) => 
+      field.csvColumnName === draggedField.csvColumnName || 
+      field.fieldName === draggedField.csvColumnName ||
+      field.csvColumnName === draggedField.fieldName ||
+      field.fieldName === draggedField.fieldName ||
+      field.csvColumnName?.toLowerCase() === draggedField.csvColumnName?.toLowerCase() ||
+      field.fieldName?.toLowerCase() === draggedField.csvColumnName?.toLowerCase() ||
+      field.csvColumnName?.toLowerCase() === draggedField.fieldName?.toLowerCase() ||
+      field.fieldName?.toLowerCase() === draggedField.fieldName?.toLowerCase()
+    );
+    const targetFieldIndex = allFields.findIndex((field) => 
+      field.csvColumnName === targetFieldName || 
+      field.fieldName === targetFieldName ||
+      field.csvColumnName?.toLowerCase() === targetFieldName.toLowerCase() ||
+      field.fieldName?.toLowerCase() === targetFieldName.toLowerCase()
+    );
 
     if (draggedFieldIndex === -1 || targetFieldIndex === -1) {
+      console.warn('DragDrop: Field not found in annotations', {
+        searching: {
+          dragged: draggedField.csvColumnName || draggedField.fieldName || '(empty)',
+          target: targetFieldName || '(empty)'
+        },
+        draggedNotFound: draggedFieldIndex === -1,
+        targetNotFound: targetFieldIndex === -1,
+        availableFields: allFields
+          .filter(f => f.isAnnotationField)
+          .map(f => `${f.fieldName} (${f.csvColumnName})`)
+      });
       return {
         success: false,
         message: 'Could not find dragged or target field in annotation configuration',
@@ -286,14 +368,6 @@ export class DragDropHelper {
     const [draggedItem] = updatedFields.splice(draggedFieldIndex, 1);
     updatedFields.splice(targetFieldIndex, 0, draggedItem);
 
-    console.log('Reordering annotation fields:', {
-      draggedField: draggedFieldData.fieldName,
-      targetField: targetFieldData.fieldName,
-      draggedIsPrimary: draggedFieldData.isPrimaryKey,
-      draggedIsNewColumn: draggedFieldData.isNewColumn,
-      targetIsPrimary: targetFieldData.isPrimaryKey,
-      targetIsNewColumn: targetFieldData.isNewColumn
-    });
 
     return {
       success: true,
@@ -321,8 +395,15 @@ export class DragDropHelper {
    * Validates if a field can be dropped on
    */
   static canDropOnField(targetField: AnnotationField, draggedField: AnnotationField): { canDrop: boolean; reason?: string } {
-    // Cannot drop on itself
-    if (targetField.csvColumnName === draggedField.csvColumnName) {
+    // Cannot drop on itself - check both csvColumnName and fieldName with case-insensitive matching
+    if (targetField.csvColumnName === draggedField.csvColumnName || 
+        targetField.fieldName === draggedField.fieldName ||
+        (targetField.csvColumnName && targetField.csvColumnName === draggedField.fieldName) ||
+        (targetField.fieldName && targetField.fieldName === draggedField.csvColumnName) ||
+        targetField.csvColumnName?.toLowerCase() === draggedField.csvColumnName?.toLowerCase() ||
+        targetField.fieldName?.toLowerCase() === draggedField.fieldName?.toLowerCase() ||
+        (targetField.csvColumnName && targetField.csvColumnName.toLowerCase() === draggedField.fieldName?.toLowerCase()) ||
+        (targetField.fieldName && targetField.fieldName.toLowerCase() === draggedField.csvColumnName?.toLowerCase())) {
       return { canDrop: false, reason: 'Cannot drop field on itself' };
     }
 
@@ -333,7 +414,7 @@ export class DragDropHelper {
   /**
    * Gets user-friendly drag restrictions message
    */
-  static getDragRestrictionMessage(field: AnnotationField, sourcePanel: 'metadata' | 'annotation'): string | null {
+  static getDragRestrictionMessage(): string | null {
     // All fields can be dragged for reordering within their panels
     // Restrictions only apply to cross-panel moves
     return null;

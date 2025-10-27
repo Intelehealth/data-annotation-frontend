@@ -5,8 +5,6 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 // Create axios instance with base configuration
 const api = axios.create({
   baseURL: API_BASE_URL,
-  // Removed default Content-Type header to allow browser to set it automatically
-  // This is especially important for FormData uploads
 });
 
 // Helper method for JSON requests

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,17 +8,9 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Save,
   Loader2,
@@ -58,11 +50,7 @@ export function DatasetSettings({ datasetId }: DatasetSettingsProps) {
   const [pendingAccessType, setPendingAccessType] = useState<'private' | 'public' | null>(null);
   const [originalAccessType, setOriginalAccessType] = useState<'private' | 'public'>('private');
 
-  useEffect(() => {
-    loadDataset();
-  }, [datasetId]);
-
-  const loadDataset = async () => {
+  const loadDataset = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -75,7 +63,7 @@ export function DatasetSettings({ datasetId }: DatasetSettingsProps) {
       const mappedAccessType = data.accessType === 'shared' ? 'private' : data.accessType as 'private' | 'public';
       setAccessType(mappedAccessType);
       setOriginalAccessType(mappedAccessType);
-    } catch (err) {
+    } catch {
       setError('Failed to load dataset');
       showToast({
         title: 'Error',
@@ -85,7 +73,11 @@ export function DatasetSettings({ datasetId }: DatasetSettingsProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [datasetId]);
+
+  useEffect(() => {
+    loadDataset();
+  }, [loadDataset]);
 
   const handleAccessTypeChange = (newAccessType: 'private' | 'public') => {
     if (newAccessType !== accessType) {
@@ -126,7 +118,7 @@ export function DatasetSettings({ datasetId }: DatasetSettingsProps) {
         description: `Dataset access changed to ${pendingAccessType} successfully`,
         type: 'success',
       });
-    } catch (err) {
+    } catch {
       showToast({
         title: 'Error',
         description: 'Failed to update dataset access type',
@@ -164,7 +156,7 @@ export function DatasetSettings({ datasetId }: DatasetSettingsProps) {
         description: 'Dataset settings updated successfully',
         type: 'success',
       });
-    } catch (err) {
+    } catch {
       showToast({
         title: 'Error',
         description: 'Failed to update dataset settings',
@@ -175,38 +167,6 @@ export function DatasetSettings({ datasetId }: DatasetSettingsProps) {
     }
   };
 
-  const getAccessTypeIcon = (type: string) => {
-    switch (type) {
-      case 'private':
-        return Lock;
-      case 'public':
-        return Globe;
-      default:
-        return Lock;
-    }
-  };
-
-  const getAccessTypeColor = (type: string) => {
-    switch (type) {
-      case 'private':
-        return 'text-red-600';
-      case 'public':
-        return 'text-green-600';
-      default:
-        return 'text-gray-600';
-    }
-  };
-
-  const getAccessTypeDescription = (type: string) => {
-    switch (type) {
-      case 'private':
-        return 'Only you can access this dataset';
-      case 'public':
-        return 'All authenticated users can access this dataset';
-      default:
-        return '';
-    }
-  };
 
   // Check if current user is the owner
   const isOwner = dataset && (
@@ -244,7 +204,7 @@ export function DatasetSettings({ datasetId }: DatasetSettingsProps) {
     return (
       <div className="text-center p-8">
         <Lock className="h-16 w-16 mx-auto text-gray-300 mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">
+        <h3 className="text-lg font-medium text-gray-900 mb-2" data-testid="dataset-settings-access-denied-message">
           Access Denied
         </h3>
         <p className="text-gray-600 mb-4">
@@ -265,7 +225,7 @@ export function DatasetSettings({ datasetId }: DatasetSettingsProps) {
         {/* Main Form Container */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 pb-4 flex flex-col">
           <div className="text-left">
-            <h1 className="text-2xl font-semibold text-gray-900 p-3">
+            <h1 className="text-2xl font-semibold text-gray-900 p-3" data-testid="dataset-settings-page-title">
               Dataset Settings
             </h1>
            
@@ -283,6 +243,7 @@ export function DatasetSettings({ datasetId }: DatasetSettingsProps) {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Enter dataset name"
+                  data-testid="dataset-settings-name-input"
                   className="mt-1 h-10"
                 />
               </div>
@@ -295,6 +256,7 @@ export function DatasetSettings({ datasetId }: DatasetSettingsProps) {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Brief description of your dataset"
+                  data-testid="dataset-settings-description-input"
                   className="mt-1 min-h-[80px] resize-none"
                   rows={3}
                 />
@@ -321,6 +283,7 @@ export function DatasetSettings({ datasetId }: DatasetSettingsProps) {
                       key={type.value}
                       type="button"
                       onClick={() => setDatasetType(type.value)}
+                      data-testid={`dataset-settings-type-${type.value}-button`}
                       className={cn(
                         'flex flex-col items-center space-y-1 p-3 rounded-lg border-2 transition-all hover:shadow-sm',
                         isSelected
@@ -372,6 +335,7 @@ export function DatasetSettings({ datasetId }: DatasetSettingsProps) {
                       key={type.value}
                       type="button"
                       onClick={() => handleAccessTypeChange(type.value as 'private' | 'public')}
+                      data-testid={`dataset-settings-access-${type.value}-button`}
                       className={cn(
                         'flex flex-col items-start space-y-1 p-3 rounded-lg border-2 transition-all hover:shadow-sm text-left',
                         isSelected
@@ -408,17 +372,19 @@ export function DatasetSettings({ datasetId }: DatasetSettingsProps) {
                 variant="outline"
                 onClick={() => window.history.back()}
                 disabled={saving}
+                data-testid="dataset-settings-cancel-button"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSave}
                 disabled={saving || !name.trim() || !datasetType}
+                data-testid="dataset-settings-save-button"
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 {saving ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" data-testid="dataset-settings-loading-spinner"></div>
                     Saving...
                   </>
                 ) : (

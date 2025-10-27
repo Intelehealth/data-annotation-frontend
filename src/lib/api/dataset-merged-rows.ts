@@ -89,12 +89,10 @@ export class DatasetMergedRowsAPI {
    */
   static async getDatasetData(datasetId: string): Promise<DatasetMergedRowsData> {
     try {
-      console.log(`Getting dataset data for ${datasetId}`);
       const response = await jsonApi.get(`/dataset-merged-rows/dataset/${datasetId}/debug`);
-      console.log('Dataset data response:', response.data);
       return response.data;
     } catch (error) {
-      console.error('Error getting dataset data:', error);
+      
       throw error;
     }
   }
@@ -144,14 +142,12 @@ export class DatasetMergedRowsAPI {
     rowIndex: number
   ): Promise<void> {
     try {
-      console.log(`Marking row ${rowIndex} as completed for dataset ${datasetId}`);
       await jsonApi.patch('/dataset-merged-rows/mark-completed', {
         datasetId,
         rowIndex,
       });
-      console.log('Row marked as completed successfully');
     } catch (error) {
-      console.error('Error marking row as completed:', error);
+     
       throw error;
     }
   }
@@ -165,15 +161,13 @@ export class DatasetMergedRowsAPI {
     data: Record<string, any>
   ): Promise<PatchRowDataResponse> {
     try {
-      console.log(`Patching row data for dataset ${datasetId}, row ${rowIndex}:`, data);
       const response = await jsonApi.patch(
         `/dataset-merged-rows/dataset/${datasetId}/row/${rowIndex}`,
         { data }
       );
-      console.log('Patch response:', response.data);
       return response.data;
     } catch (error) {
-      console.error('Error patching row data:', error);
+     
       throw error;
     }
   }
@@ -186,7 +180,7 @@ export class DatasetMergedRowsAPI {
       const data = await this.getDatasetData(datasetId);
       return data.totalRows > 0;
     } catch (error) {
-      console.error('Error checking merged rows:', error);
+      
       return false;
     }
   }
@@ -234,7 +228,7 @@ export class DatasetMergedRowsAPI {
         rowStatuses,
       };
     } catch (error) {
-      console.error('Error getting detailed progress:', error);
+      
       throw error;
     }
   }
@@ -259,7 +253,7 @@ export class DatasetMergedRowsAPI {
         progressPercentage: progress.progressPercentage,
       };
     } catch (error) {
-      console.error('Error checking resume capability:', error);
+     
       return {
         canResume: false,
         lastViewedRow: 0,
@@ -283,9 +277,8 @@ export class DatasetMergedRowsAPI {
         lastViewedRow,
         completedRows,
       });
-      console.log('Dataset annotation progress updated:', response.data);
     } catch (error) {
-      console.error('Error updating dataset annotation progress:', error);
+     
       throw error;
     }
   }
@@ -305,7 +298,6 @@ export class DatasetMergedRowsAPI {
       );
       return response.data;
     } catch (error) {
-      console.error('Error checking completion status:', error);
       throw error;
     }
   }

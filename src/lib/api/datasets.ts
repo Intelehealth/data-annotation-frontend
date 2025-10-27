@@ -10,6 +10,11 @@ export interface DatasetResponse {
   datasetType: string;
   accessType: 'private' | 'public' | 'shared';
   sharedWith: { userId: string; email: string }[];
+  imageAuthConfig?: {
+    isPrivate: boolean;
+    username?: string;
+    password?: string;
+  };
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -28,6 +33,11 @@ export interface UpdateDatasetRequest {
   datasetType?: string;
   accessType?: 'private' | 'public' | 'shared';
   sharedWith?: { userId: string; email: string }[];
+  imageAuthConfig?: {
+    isPrivate: boolean;
+    username?: string;
+    password?: string;
+  };
 }
 
 export const datasetsAPI = {

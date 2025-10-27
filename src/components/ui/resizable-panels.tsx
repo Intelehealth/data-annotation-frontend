@@ -79,6 +79,7 @@ export function ResizablePanels({
       <div 
         className="flex-shrink-0 overflow-hidden"
         style={{ width: `${leftWidth}%` }}
+        data-testid="resizable-panels-left-panel"
       >
         {leftPanel}
       </div>
@@ -106,6 +107,7 @@ export function ResizablePanels({
       <div 
         className="flex-1 overflow-hidden"
         style={{ width: `${100 - leftWidth}%` }}
+        data-testid="resizable-panels-right-panel"
       >
         {rightPanel}
       </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -11,12 +11,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import {
-  Plus,
   Search,
   Users,
   Calendar,
   Loader2,
-  User,
   Mail,
   Shield,
   ShieldCheck,
@@ -33,9 +31,28 @@ export function UsersManagement() {
   const [filteredUsers, setFilteredUsers] = useState<UserResponse[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const loadUsers = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await usersAPI.getAll();
+      setUsers(data);
+      setFilteredUsers(data);
+    } catch {
+      setError('Failed to load users');
+      showToast({
+        title: 'Error',
+        description: 'Failed to load users',
+        type: 'error',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadUsers();
-  }, []);
+  }, [loadUsers]);
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
@@ -51,25 +68,6 @@ export function UsersManagement() {
       setFilteredUsers(filtered);
     }
   }, [searchQuery, users]);
-
-  const loadUsers = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await usersAPI.getAll();
-      setUsers(data);
-      setFilteredUsers(data);
-    } catch (err) {
-      setError('Failed to load users');
-      showToast({
-        title: 'Error',
-        description: 'Failed to load users',
-        type: 'error',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -139,6 +137,7 @@ export function UsersManagement() {
             placeholder="Search users..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            data-testid="users-search-input"
             className="pl-10 h-9"
           />
         </div>

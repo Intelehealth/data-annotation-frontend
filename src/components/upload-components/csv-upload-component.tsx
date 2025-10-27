@@ -166,7 +166,6 @@ export function CSVUploadComponent({
         checkAndRedirectAfterUpload();
       }, 2000);
     } catch (error: any) {
-      console.error('Upload failed:', error);
       setUploadStatus('error');
       const serverMessage = error?.response?.data?.message || error?.message;
       showToast({
@@ -291,7 +290,6 @@ export function CSVUploadComponent({
           duplicateColumns: duplicateColumns.length > 0 ? duplicateColumns : undefined, // Store duplicate columns info only if found
         });
       } catch (error) {
-        console.error('Error parsing Excel file:', error);
         showToast({
           type: 'error',
           title: 'Excel Parse Error',
@@ -391,7 +389,6 @@ export function CSVUploadComponent({
         }
       }
     } catch (error: any) {
-      console.error('Header validation failed:', error);
       if (showToasts) {
         showToast({
           type: 'error',
@@ -444,16 +441,13 @@ export function CSVUploadComponent({
       
       // If this is the first CSV upload and no field config exists, redirect to field config
       if (existingImports.length === 1 && !fieldConfig.hasConfig) {
-        console.log('First CSV upload detected, redirecting to field configuration');
         router.push(`/dataset/${selectedDatasetId}?tab=field-configuration`);
       } else {
         // For subsequent uploads or if field config already exists, redirect to overview
-        console.log('Subsequent CSV upload or field config exists, redirecting to overview');
         router.push(`/dataset/${selectedDatasetId}?tab=overview`);
       }
     } catch (error) {
-      console.error('Error checking redirect conditions:', error);
-      // Fallback to overview if there's an error
+    // Fallback to overview if there's an error
       router.push(`/dataset/${selectedDatasetId}?tab=overview`);
     }
   };
@@ -469,6 +463,7 @@ export function CSVUploadComponent({
               ? 'border-blue-400 bg-blue-50 scale-105'
               : 'border-gray-300 hover:border-blue-300 hover:bg-gray-50',
           )}
+          data-testid="csv-upload-area"
           onDrop={handleFileDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -490,7 +485,7 @@ export function CSVUploadComponent({
           </div>
 
           <div className="space-y-1">
-            <h3 className="text-lg font-medium text-gray-900">
+            <h3 className="text-lg font-medium text-gray-900" data-testid="csv-upload-drag-drop-text">
               {isDragOver
                 ? 'Drop files here'
                 : 'Drag & drop files'}
@@ -504,6 +499,7 @@ export function CSVUploadComponent({
             variant="outline"
             size="sm"
             className="mt-2"
+            data-testid="csv-upload-select-button"
             onClick={(e) => {
               e.stopPropagation();
               document.getElementById('csvFileInput')?.click();
@@ -521,6 +517,7 @@ export function CSVUploadComponent({
       <input
         id="csvFileInput"
         type="file"
+        data-testid="csv-upload-file-input"
         accept=".csv,.xlsx,.xls"
         onChange={handleFileSelect}
         className="hidden"
@@ -537,6 +534,7 @@ export function CSVUploadComponent({
               variant="ghost"
               size="sm"
               onClick={removeFile}
+              data-testid="csv-upload-remove-button"
               className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
             >
               <X className="h-4 w-4 mr-1" />
@@ -548,7 +546,7 @@ export function CSVUploadComponent({
             <div className="flex items-center space-x-3">
               {getFileIcon(selectedFile)}
               <div className="min-w-0">
-                <p className="font-medium text-gray-900 text-sm truncate max-w-48">
+                <p className="font-medium text-gray-900 text-sm truncate max-w-48" data-testid="csv-upload-selected-file-name">
                   {selectedFile.name}
                 </p>
                 <p className="text-xs text-gray-500">
@@ -563,6 +561,7 @@ export function CSVUploadComponent({
                 size="sm"
                 onClick={() => validateHeaders(true)}
                 disabled={isValidatingHeaders}
+                data-testid="csv-upload-validate-button"
                 className="h-7 px-2"
               >
                 {isValidatingHeaders ? (
@@ -576,6 +575,7 @@ export function CSVUploadComponent({
                 variant="outline"
                 size="sm"
                 onClick={previewCSV}
+                data-testid="csv-upload-preview-button"
                 className="h-7 px-2"
               >
                 <Eye className="h-3 w-3 mr-1" />
@@ -586,7 +586,7 @@ export function CSVUploadComponent({
 
           {/* File Preview */}
           {csvPreview && (
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="bg-white rounded-lg border border-gray-200 p-4" data-testid="csv-upload-file-preview">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-medium text-gray-900">
                   File Preview
@@ -657,7 +657,7 @@ export function CSVUploadComponent({
                            Duplicate Columns Found
                          </span>
                        </div>
-                       <p className="text-sm text-red-700">
+                       <p className="text-sm text-red-700" data-testid="csv-upload-duplicate-column-error">
                          The following columns appear multiple times: <span className="font-mono bg-red-100 px-1 rounded">{csvPreview.duplicateColumns.join(', ')}</span>. Please fix column names before uploading.
                        </p>
                      </div>
@@ -676,6 +676,7 @@ export function CSVUploadComponent({
                   ? 'bg-green-50 border-green-200'
                   : 'bg-red-50 border-red-200',
               )}
+              data-testid="csv-upload-header-validation-results"
             >
               <div className="flex items-center justify-between mb-3">
                 <h4
@@ -695,6 +696,7 @@ export function CSVUploadComponent({
                       ? 'bg-green-100 text-green-800'
                       : 'bg-red-100 text-red-800',
                   )}
+                  data-testid="csv-upload-validation-status-badge"
                 >
                   {headerValidation.isValid && !headerValidation.isDuplicate
                     ? 'Valid'
@@ -709,18 +711,18 @@ export function CSVUploadComponent({
               {headerValidation.isDuplicate ? (
                 <div className="space-y-3">
                   <div className="text-sm text-red-700">
-                    <p className="mb-2">❌ Duplicate file detected. Please upload a different file.</p>
+                    <p className="mb-2" data-testid="csv-upload-duplicate-file-message">❌ Duplicate file detected. Please upload a different file.</p>
                   </div>
                 </div>
               ) : headerValidation.errors.some(error => error.message.includes('Primary key conflicts detected')) ? (
                 <div className="space-y-3">
                   <div className="text-sm text-red-700">
-                    <p className="mb-2">❌ {headerValidation.errors.find(error => error.message.includes('Primary key conflicts detected'))?.message}</p>
+                    <p className="mb-2" data-testid="csv-upload-primary-key-conflict-message">❌ {headerValidation.errors.find(error => error.message.includes('Primary key conflicts detected'))?.message}</p>
                   </div>
                 </div>
               ) : headerValidation.isValid ? (
                 <div className="text-sm text-green-700">
-                  <p className="mb-2">
+                  <p className="mb-2" data-testid="csv-upload-headers-match-message">
                     ✅ CSV headers match existing files in this dataset.
                   </p>
                   <p className="text-xs text-green-600">
@@ -731,7 +733,7 @@ export function CSVUploadComponent({
               ) : (
                 <div className="space-y-3">
                   <div className="text-sm text-red-700">
-                    <p className="mb-2">
+                    <p className="mb-2" data-testid="csv-upload-header-validation-failed-message">
                       ❌ Header validation failed. The following issues were
                       found:
                     </p>
@@ -775,7 +777,7 @@ export function CSVUploadComponent({
                     ))}
                   </div>
 
-                  <div className="text-xs text-red-600 bg-white p-2 rounded border border-red-200">
+                  <div className="text-xs text-red-600 bg-white p-2 rounded border border-red-200" data-testid="csv-upload-expected-headers">
                     <p className="font-medium mb-1">Expected headers:</p>
                     <div className="flex flex-wrap gap-1">
                       {headerValidation.expectedHeaders.map((header, index) => (
@@ -789,7 +791,7 @@ export function CSVUploadComponent({
                     </div>
                   </div>
 
-                  <div className="text-xs text-red-600 bg-white p-2 rounded border border-red-200">
+                  <div className="text-xs text-red-600 bg-white p-2 rounded border border-red-200" data-testid="csv-upload-actual-headers">
                     <p className="font-medium mb-1">Your CSV headers:</p>
                     <div className="flex flex-wrap gap-1">
                       {headerValidation.newHeaders.map((header, index) => (
@@ -812,6 +814,7 @@ export function CSVUploadComponent({
               className="w-full"
               size="sm"
               onClick={handleUpload}
+              data-testid="csv-upload-upload-button"
               disabled={
                 isUploading ||
                 !selectedDatasetId ||
@@ -830,7 +833,7 @@ export function CSVUploadComponent({
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Upload file
+                  <span data-testid="csv-upload-upload-file-text">Upload file</span>
                 </>
               )}
             </Button>
@@ -840,7 +843,7 @@ export function CSVUploadComponent({
 
       {/* Upload Progress */}
       {uploadStatus === 'uploading' && (
-        <div className="space-y-2">
+        <div className="space-y-2" data-testid="csv-upload-progress">
           <div className="flex justify-between text-sm text-gray-600">
             <span>Uploading...</span>
             <span>{uploadProgress}%</span>
@@ -858,7 +861,7 @@ export function CSVUploadComponent({
       <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
         <div className="flex items-center space-x-2 mb-2">
           <FileText className="h-4 w-4 text-blue-600" />
-          <span className="text-sm font-medium text-blue-900">
+          <span className="text-sm font-medium text-blue-900" data-testid="csv-upload-file-requirements">
             File requirements
           </span>
         </div>

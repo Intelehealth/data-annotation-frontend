@@ -4,8 +4,9 @@
  */
 
 import { ExportData, generateCsvContent, downloadCsv } from './csv-export-helper';
-import { DatasetMergedRowsAPI, DatasetMergedRowsData } from './api/dataset-merged-rows';
+import { DatasetMergedRowsData } from './api/dataset-merged-rows';
 import { datasetsAPI } from './api/datasets';
+import { AnnotationsAPI } from './api/annotations';
 
 export interface DatasetExportOptions {
   cleanHtml?: boolean;
@@ -19,10 +20,52 @@ export interface AnnotationField {
   fieldName: string;
   isAnnotationField: boolean;
   isNewColumn: boolean;
+  fieldType?: string;
 }
 
 export interface AnnotationConfig {
   annotationFields: AnnotationField[];
+}
+
+/**
+ * Fetch image metadata from annotations API and format as structured string
+ * Returns format: "url1,caption1\nurl2,caption2\nurl3,caption3"
+ * Only exports images where isSelected === true
+ * Each image is on a new line with format: url,caption
+ */
+async function getImageMetadataFormatted(
+  datasetId: string,
+  rowIndex: number,
+  fieldName: string
+): Promise<string> {
+  try {
+    // Get all annotations for this specific row
+    const annotations = await AnnotationsAPI.getRowAnnotations(datasetId, rowIndex);
+    
+    // Find the annotation for this specific field
+    const imageAnnotation = annotations.find(ann => ann.fieldName === fieldName);
+    
+    if (!imageAnnotation || !imageAnnotation.images || imageAnnotation.images.length === 0) {
+      return '';
+    }
+    
+    // Filter only selected images and sort by order
+    const selectedImages = imageAnnotation.images
+      .filter(img => img.isSelected)
+      .sort((a, b) => a.order - b.order);
+    
+    // Format each image as: "url,caption" and join with newline
+    const formattedParts = selectedImages.map((img) => [
+      img.url || '',
+      (img.caption || '').replace(/,/g, '\\,').replace(/\n/g, '\\n') // Escape commas and newlines in captions
+    ].join(','));
+    
+    return formattedParts.join('\n');
+    
+  } catch (error) {
+    // If error is 404 or similar, just return empty string (no annotation exists yet)
+    return '';
+  }
 }
 
 /**
@@ -34,114 +77,84 @@ export async function exportSelectedColumnsToCSV(
   datasetId: string,
   options: DatasetExportOptions = {}
 ): Promise<void> {
-  console.log('🔍 [Dataset Export] Starting selected columns export...');
-  console.log('📊 [Dataset Export] Dataset data:', {
-    totalRows: datasetData.totalRows,
-    mergedRowsLength: datasetData.mergedRows?.length,
-    csvImportsCount: datasetData.csvImports?.length
-  });
-
   if (!datasetData) {
-    console.error('❌ [Dataset Export] Cannot export: missing dataset data');
     return;
   }
 
   try {
-    // Get all rows with their data
     const allRows = datasetData.mergedRows || [];
-    console.log('📋 [Dataset Export] All rows for export:', allRows.length);
 
-    // Validate row count
-    if (allRows.length !== datasetData.totalRows) {
-      console.warn('⚠️ [Dataset Export] Row count mismatch:', {
-        mergedRowsLength: allRows.length,
-        totalRows: datasetData.totalRows
-      });
-    }
-
-    // Get selected fields (metadata fields + annotation fields)
-  const selectedFields = annotationConfig?.annotationFields.filter(
+    const selectedFields = annotationConfig?.annotationFields.filter(
       (field) => !field.isAnnotationField || field.isAnnotationField || field.isNewColumn
     ) || [];
 
-    console.log('🏷️ [Dataset Export] Selected fields:', selectedFields.map(f => ({
-      csvColumnName: f.csvColumnName,
-      fieldName: f.fieldName,
-      isAnnotationField: f.isAnnotationField,
-      isNewColumn: f.isNewColumn
-    })));
-
-    console.log('🔍 [Dataset Export] Selected fields count:', selectedFields.length);
-    console.log('🔍 [Dataset Export] Selected fields details:', {
-      metadataFields: selectedFields.filter(f => !f.isAnnotationField && !f.isNewColumn).length,
-      annotationFields: selectedFields.filter(f => f.isAnnotationField || f.isNewColumn).length,
-      totalSelected: selectedFields.length
-    });
-
-    // Prepare export data
     const exportRows: Record<string, any>[] = [];
     const headers: string[] = [];
+    const metadataHeaders: string[] = [];
 
     // Build headers from selected fields
     selectedFields.forEach((field) => {
-      if (!field.isAnnotationField && !field.isNewColumn) {
+      // Check if this is an image field (regardless of annotation status)
+      if (field.fieldType === 'image') {
+        // Add original field name to main headers
+        headers.push(field.csvColumnName || field.fieldName);
+        // Add metadata column name to metadata headers (will be added at the end)
+        metadataHeaders.push(`${field.fieldName}_metadata`);
+      } else if (!field.isAnnotationField && !field.isNewColumn) {
         headers.push(field.csvColumnName);
       } else if (field.isAnnotationField || field.isNewColumn) {
         headers.push(field.fieldName);
       }
     });
 
-    console.log('📝 [Dataset Export] Headers:', headers);
+    // Add metadata headers at the end
+    headers.push(...metadataHeaders);
 
-    // Build rows with detailed logging
-    console.log('🔄 [Dataset Export] Building export rows...');
+    // Build rows with annotation data
     for (let rowIndex = 0; rowIndex < allRows.length; rowIndex++) {
       const row = allRows[rowIndex];
       const exportedRow: Record<string, any> = {};
 
-      if (rowIndex < 3) {
-        console.log(`📄 [Dataset Export] Processing row ${rowIndex}:`, {
-          rowIndex: row.rowIndex,
-          dataKeys: Object.keys(row.data || {}),
-          dataSample: Object.keys(row.data || {}).slice(0, 5)
-        });
-      }
-
-      // Add selected fields
-      selectedFields.forEach((field) => {
-        if (!field.isAnnotationField && !field.isNewColumn) {
-          // Original CSV column - check if it exists in stored data
+      // Process each selected field
+      for (const field of selectedFields) {
+        // Check if this is an image field (regardless of annotation status)
+        if (field.fieldType === 'image') {
+          // Keep original data unchanged
+          const originalColumnName = field.csvColumnName || field.fieldName;
+          if (row.data && row.data.hasOwnProperty(originalColumnName)) {
+            exportedRow[originalColumnName] = row.data[originalColumnName] || '';
+          } else {
+            exportedRow[originalColumnName] = '';
+          }
+          
+          // Add separate metadata column with annotation data
+          const imageMetadata = await getImageMetadataFormatted(datasetId, row.rowIndex, field.fieldName);
+          exportedRow[`${field.fieldName}_metadata`] = imageMetadata;
+        } else if (!field.isAnnotationField && !field.isNewColumn) {
+          // Original CSV column
           if (row.data && row.data.hasOwnProperty(field.csvColumnName)) {
             exportedRow[field.csvColumnName] = row.data[field.csvColumnName] || '';
           } else {
-            // Column was filtered out during processing, include as empty
             exportedRow[field.csvColumnName] = '';
           }
         } else if (field.isAnnotationField || field.isNewColumn) {
-          // New annotation column
+          // Regular annotation column
           if (row.data && row.data.hasOwnProperty(field.fieldName)) {
             exportedRow[field.fieldName] = row.data[field.fieldName] || '';
           } else {
             exportedRow[field.fieldName] = '';
           }
         }
-      });
+      }
 
       exportRows.push(exportedRow);
     }
-
-    console.log('✅ [Dataset Export] Export rows built:', {
-      totalExportRows: exportRows.length,
-      expectedRows: allRows.length,
-      headersCount: headers.length
-    });
 
     const exportData: ExportData = {
       headers,
       rows: exportRows,
     };
 
-    // Generate clean filename with IST timestamp
     const istTime = new Date().toLocaleString('en-CA', { 
       timeZone: 'Asia/Kolkata',
       year: 'numeric',
@@ -153,41 +166,36 @@ export async function exportSelectedColumnsToCSV(
       hour12: false
     }).replace(/[, ]/g, '_').replace(/:/g, '-');
     
-    // Fetch dataset name from dataset API
     let datasetName = 'dataset';
     try {
       const dataset = await datasetsAPI.getById(datasetId);
       datasetName = dataset.name.replace(/[^a-zA-Z0-9_-]/g, '_');
     } catch (error) {
-      console.warn('Could not fetch dataset name, using fallback:', error);
+      // Using fallback dataset name - could notify via options.onError if needed
+      if (options.onError) {
+        options.onError('Using fallback dataset name for export');
+      }
     }
     
     const cleanFileName = `selected_columns_${datasetName}_${istTime}.csv`;
 
-    console.log('💾 [Dataset Export] Exporting to file:', cleanFileName);
-
-    // Generate CSV content directly
     const csvContent = generateCsvContent(exportData, { cleanHtml: options.cleanHtml ?? true });
     
-    // Download CSV with correct row count
     downloadCsv(csvContent, cleanFileName, {
       showSuccess: options.showSuccess ?? true,
       onSuccess: (message) => {
-        console.log('🎉 [Dataset Export] Selected columns CSV exported successfully');
         if (options.onSuccess) {
           options.onSuccess(message);
         }
       },
       onError: (error) => {
-        console.error('❌ [Dataset Export] Error exporting selected columns CSV:', error);
         if (options.onError) {
           options.onError(error);
         }
       },
-      actualRowCount: exportRows.length, // Pass the actual row count
+      actualRowCount: exportRows.length,
     });
   } catch (error) {
-    console.error('❌ [Dataset Export] Error exporting selected columns CSV:', error);
     if (options.onError) {
       options.onError(`Failed to export selected columns CSV: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -203,32 +211,14 @@ export async function exportAllColumnsToCSV(
   datasetId: string,
   options: DatasetExportOptions = {}
 ): Promise<void> {
-  console.log('🔍 [Dataset Export] Starting all columns export...');
-  console.log('📊 [Dataset Export] Dataset data:', {
-    totalRows: datasetData.totalRows,
-    mergedRowsLength: datasetData.mergedRows?.length,
-    csvImportsCount: datasetData.csvImports?.length
-  });
-
   if (!datasetData) {
-    console.error('❌ [Dataset Export] Cannot export: missing dataset data');
     return;
   }
 
   try {
-    // Get all rows with their data
     const allRows = datasetData.mergedRows || [];
-    console.log('📋 [Dataset Export] All rows for export:', allRows.length);
 
-    // Validate row count
-    if (allRows.length !== datasetData.totalRows) {
-      console.warn('⚠️ [Dataset Export] Row count mismatch:', {
-        mergedRowsLength: allRows.length,
-        totalRows: datasetData.totalRows
-      });
-    }
-
-    // Get all columns from dataset.schema.ts availableColumns
+    // Get all columns from dataset schema or fallback to row data
     let allColumns: string[] = [];
     try {
       const dataset = await datasetsAPI.getById(datasetId);
@@ -236,7 +226,6 @@ export async function exportAllColumnsToCSV(
         allColumns = (dataset as any).availableColumns.map((col: any) => col.name);
       }
     } catch (error) {
-      console.warn('Could not fetch dataset availableColumns, falling back to row data:', error);
       // Fallback: get columns from row data
       allRows.forEach(row => {
         if (row.data) {
@@ -249,52 +238,70 @@ export async function exportAllColumnsToCSV(
       });
     }
 
-    console.log('🏷️ [Dataset Export] All columns from dataset.schema.ts:', allColumns);
-
-    // Prepare export data - use columns exactly as they exist in the schema
     const exportRows: Record<string, any>[] = [];
-    const headers: string[] = [...allColumns];
+    const headers: string[] = [];
+    const metadataHeaders: string[] = [];
 
-    console.log('📝 [Dataset Export] Headers:', headers);
+    // Build headers, expanding image fields
+    for (const columnName of allColumns) {
+      const isImageField = annotationConfig.annotationFields.some(f => 
+        f.fieldName === columnName && f.fieldType === 'image'
+      );
+      
+      if (isImageField) {
+        // Add original column name to main headers
+        headers.push(columnName);
+        // Add metadata column name to metadata headers (will be added at the end)
+        metadataHeaders.push(`${columnName}_metadata`);
+      } else {
+        headers.push(columnName);
+      }
+    }
 
-    // Build rows with detailed logging
-    console.log('🔄 [Dataset Export] Building export rows...');
+    // Add metadata headers at the end
+    headers.push(...metadataHeaders);
+
+    // Build rows with annotation data
     for (let rowIndex = 0; rowIndex < allRows.length; rowIndex++) {
       const row = allRows[rowIndex];
       const exportedRow: Record<string, any> = {};
-      
-      if (rowIndex < 3) {
-        console.log(`📄 [Dataset Export] Processing row ${rowIndex}:`, {
-          rowIndex: row.rowIndex,
-          dataKeys: Object.keys(row.data || {}),
-          dataSample: Object.keys(row.data || {}).slice(0, 5)
-        });
-      }
 
-      // Add all columns (original + annotation) without duplication
-      headers.forEach((columnName) => {
-        if (row.data && row.data.hasOwnProperty(columnName)) {
-          exportedRow[columnName] = row.data[columnName] || '';
+      // Process all columns
+      for (const columnName of allColumns) {
+        // Check if this is an image field
+        const isImageField = annotationConfig.annotationFields.some(f => 
+          f.fieldName === columnName && f.fieldType === 'image'
+        );
+        
+        if (isImageField) {
+          // Keep original data unchanged
+          if (row.data && row.data.hasOwnProperty(columnName)) {
+            exportedRow[columnName] = row.data[columnName] || '';
+          } else {
+            exportedRow[columnName] = '';
+          }
+          
+          // Add separate metadata column with annotation data
+          const imageMetadata = await getImageMetadataFormatted(datasetId, row.rowIndex, columnName);
+          exportedRow[`${columnName}_metadata`] = imageMetadata;
         } else {
-          exportedRow[columnName] = '';
+          // Regular column
+          if (row.data && row.data.hasOwnProperty(columnName)) {
+            exportedRow[columnName] = row.data[columnName] || '';
+          } else {
+            exportedRow[columnName] = '';
+          }
         }
-      });
+      }
 
       exportRows.push(exportedRow);
     }
-
-    console.log('✅ [Dataset Export] Export rows built:', {
-      totalExportRows: exportRows.length,
-      expectedRows: allRows.length,
-      headersCount: headers.length
-    });
 
     const exportData: ExportData = {
       headers,
       rows: exportRows,
     };
 
-    // Generate clean filename with IST timestamp
     const istTime = new Date().toLocaleString('en-CA', { 
       timeZone: 'Asia/Kolkata',
       year: 'numeric',
@@ -306,41 +313,36 @@ export async function exportAllColumnsToCSV(
       hour12: false
     }).replace(/[, ]/g, '_').replace(/:/g, '-');
     
-    // Fetch dataset name from dataset API
     let datasetName = 'dataset';
     try {
       const dataset = await datasetsAPI.getById(datasetId);
       datasetName = dataset.name.replace(/[^a-zA-Z0-9_-]/g, '_');
     } catch (error) {
-      console.warn('Could not fetch dataset name, using fallback:', error);
+      // Using fallback dataset name - could notify via options.onError if needed
+      if (options.onError) {
+        options.onError('Using fallback dataset name for export');
+      }
     }
     
     const cleanFileName = `all_columns_${datasetName}_${istTime}.csv`;
 
-    console.log('💾 [Dataset Export] Exporting to file:', cleanFileName);
-
-    // Generate CSV content directly
     const csvContent = generateCsvContent(exportData, { cleanHtml: options.cleanHtml ?? true });
     
-    // Download CSV with correct row count
     downloadCsv(csvContent, cleanFileName, {
       showSuccess: options.showSuccess ?? true,
       onSuccess: (message) => {
-        console.log('🎉 [Dataset Export] All columns CSV exported successfully');
         if (options.onSuccess) {
           options.onSuccess(message);
         }
       },
       onError: (error) => {
-        console.error('❌ [Dataset Export] Error exporting all columns CSV:', error);
         if (options.onError) {
           options.onError(error);
         }
       },
-      actualRowCount: exportRows.length, // Pass the actual row count
+      actualRowCount: exportRows.length,
     });
   } catch (error) {
-    console.error('❌ [Dataset Export] Error exporting all columns CSV:', error);
     if (options.onError) {
       options.onError(`Failed to export all columns CSV: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

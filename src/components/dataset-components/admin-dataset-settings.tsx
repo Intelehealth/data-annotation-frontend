@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -77,12 +77,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
   const [userComboOpen, setUserComboOpen] = useState(false);
   const [userSearchValue, setUserSearchValue] = useState('');
 
-  useEffect(() => {
-    loadDataset();
-    loadUsers();
-  }, [datasetId]);
-
-  const loadDataset = async () => {
+  const loadDataset = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -118,7 +113,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
         });
         setSharedUsers(sharedUserObjects);
       }
-    } catch (err) {
+    } catch {
       setError('Failed to load dataset');
       showToast({
         title: 'Error',
@@ -128,16 +123,25 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [datasetId]);
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       const users = await usersAPI.getAll();
       setAllUsers(users);
-    } catch (err) {
-      console.error('Failed to load users:', err);
+    } catch {
+      showToast({
+        title: 'Error',
+        description: 'Failed to load users list',
+        type: 'error',
+      });
     }
-  };
+  }, [showToast]);
+
+  useEffect(() => {
+    loadDataset();
+    loadUsers();
+  }, [loadDataset, loadUsers]);
 
   const handleAccessTypeChange = (newAccessType: 'private' | 'public' | 'shared') => {
     if (newAccessType !== accessType) {
@@ -179,7 +183,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
         description: `Dataset access changed to ${pendingAccessType} successfully`,
         type: 'success',
       });
-    } catch (err) {
+    } catch {
       showToast({
         title: 'Error',
         description: 'Failed to update dataset access type',
@@ -218,7 +222,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
         description: 'Dataset settings updated successfully',
         type: 'success',
       });
-    } catch (err) {
+    } catch {
       showToast({
         title: 'Error',
         description: 'Failed to update dataset settings',
@@ -239,45 +243,6 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
 
   const removeUserFromShared = (userId: string) => {
     setSharedUsers(sharedUsers.filter(u => u._id !== userId));
-  };
-
-  const getAccessTypeIcon = (type: string) => {
-    switch (type) {
-      case 'private':
-        return Lock;
-      case 'public':
-        return Globe;
-      case 'shared':
-        return Users;
-      default:
-        return Lock;
-    }
-  };
-
-  const getAccessTypeColor = (type: string) => {
-    switch (type) {
-      case 'private':
-        return 'text-red-600';
-      case 'public':
-        return 'text-green-600';
-      case 'shared':
-        return 'text-blue-600';
-      default:
-        return 'text-gray-600';
-    }
-  };
-
-  const getAccessTypeDescription = (type: string) => {
-    switch (type) {
-      case 'private':
-        return 'Only you can access this dataset';
-      case 'public':
-        return 'All authenticated users can access this dataset';
-      case 'shared':
-        return 'Only specific users can access this dataset';
-      default:
-        return '';
-    }
   };
 
   // Filter users for combobox (exclude already shared users, current user, and dataset owner)
@@ -318,7 +283,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
       <div className="max-w-4xl mx-auto w-full p-4">
         {/* Header */}
         <div className="text-left mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900">
+          <h1 className="text-2xl font-semibold text-gray-900" data-testid="admin-dataset-settings-title">
             Dataset Settings (Admin)
           </h1>
           <p className="text-gray-600">
@@ -349,6 +314,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Enter dataset name"
+                  data-testid="dataset-settings-name-input"
                   className="mt-1 h-10"
                 />
               </div>
@@ -363,6 +329,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Brief description of your dataset"
+                  data-testid="dataset-settings-description-input"
                   className="mt-1 min-h-[80px] resize-none"
                   rows={3}
                 />
@@ -413,7 +380,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
             <CardHeader className="pb-4">
               <div className="flex items-center space-x-2">
                 <Shield className="h-5 w-5 text-blue-600" />
-                <CardTitle className="text-lg">Access Management</CardTitle>
+                <CardTitle className="text-lg" data-testid="admin-dataset-access-management-title">Access Management</CardTitle>
               </div>
               <CardDescription>
                 Control who can access this dataset
@@ -422,7 +389,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
             <CardContent className="space-y-6">
               {/* Dataset Owner */}
               <div>
-                <Label className="text-sm font-medium text-gray-700">
+                <Label className="text-sm font-medium text-gray-700" data-testid="admin-dataset-owner-label">
                   Dataset Owner
                 </Label>
                 <div className="mt-1 p-3 bg-gray-50 rounded-lg border">
@@ -448,7 +415,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
                         </p>
                       </div>
                     </div>
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800" data-testid="admin-dataset-owner-badge">
                       Owner
                     </span>
                   </div>
@@ -498,6 +465,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
                         key={type.value}
                         type="button"
                         onClick={() => handleAccessTypeChange(type.value as 'private' | 'public' | 'shared')}
+                        data-testid={`dataset-access-type-${type.value}-button`}
                         className={cn(
                           'flex flex-col items-center space-y-2 p-4 rounded-lg border-2 transition-all hover:shadow-sm text-center',
                           isSelected
@@ -530,11 +498,11 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
               {accessType === 'shared' && (
                 <div className="space-y-4 pt-4 border-t border-gray-100">
                   <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium text-gray-700">
+                    <Label className="text-sm font-medium text-gray-700" data-testid="admin-dataset-shared-users-label">
                       Shared Users
                     </Label>
                     {sharedUsers.length > 0 && (
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-500" data-testid="shared-users-count">
                         {sharedUsers.length} user{sharedUsers.length !== 1 ? 's' : ''}
                       </span>
                     )}
@@ -547,6 +515,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
                         variant="outline"
                         role="combobox"
                         aria-expanded={userComboOpen}
+                        data-testid="add-user-combobox"
                         className="w-full justify-between h-10"
                       >
                         <div className="flex items-center space-x-2">
@@ -571,6 +540,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
                                 key={user._id}
                                 value={`${user.firstName} ${user.lastName} ${user.email}`}
                                 onSelect={() => addUserToShared(user)}
+                                data-testid={`user-option-${user._id}`}
                               >
                                 <Check
                                   className={cn(
@@ -596,11 +566,12 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
 
                   {/* Shared Users List */}
                   {sharedUsers.length > 0 && (
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                    <div className="space-y-2 max-h-48 overflow-y-auto" data-testid="shared-users-list">
                       {sharedUsers.map((sharedUser) => (
                         <div
                           key={sharedUser._id}
                           className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border"
+                          data-testid={`shared-user-card-${sharedUser._id}`}
                         >
                           <div className="flex items-center space-x-3">
                             <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
@@ -619,6 +590,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
                           </div>
                           <Button
                             variant="ghost"
+                            data-testid="remove-user-button"
                             size="sm"
                             onClick={() => removeUserFromShared(sharedUser._id)}
                             className="text-red-600 hover:text-red-700 hover:bg-red-50"
@@ -631,7 +603,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
                   )}
                   
                   {sharedUsers.length === 0 && (
-                    <div className="text-center py-6 text-gray-500">
+                    <div className="text-center py-6 text-gray-500" data-testid="shared-users-empty-state">
                       <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
                       <p className="text-sm">No users added yet</p>
                       <p className="text-xs">Use the button above to add users</p>
@@ -656,6 +628,7 @@ export function AdminDatasetSettings({ datasetId }: AdminDatasetSettingsProps) {
           <Button
             onClick={handleSave}
             disabled={saving || !name.trim() || !datasetType}
+            data-testid="dataset-settings-save-button"
             className="bg-blue-600 hover:bg-blue-700"
           >
             {saving ? (

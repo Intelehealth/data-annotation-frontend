@@ -22,19 +22,19 @@ import {
   CheckCircle,
   AlertCircle,
   Database,
-  ArrowLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CSVColumnsDisplay } from './csv-columns-display';
 import { useToast } from '@/components/ui/toast';
+import { ImageAuthConfigCard } from './image-auth-config-card';
 
 interface NewColumn {
   id: string;
   columnName: string; // e.g., "Review Notes", "Quality Score"
-  columnType: 'text' | 'number' | 'select' | 'textarea' | 'rating';
+  columnType: 'text' | 'number' | 'select' | 'selectrange' | 'multiselect';
   isRequired: boolean;
   defaultValue?: string;
-  options?: string[]; // For select type
+  options?: string[]; // For select and multiselect types
   placeholder?: string;
   validation?: {
     minLength?: number;
@@ -49,12 +49,14 @@ interface AnnotationField {
   id: string;
   csvColumnName: string;
   fieldName: string;
-  fieldType: 'text' | 'image' | 'audio';
+  fieldType: 'text' | 'number' | 'markdown' | 'image' | 'audio';
   isRequired: boolean;
   // true if it needs annotation (shown on right), false if metadata (left)
   isAnnotationField: boolean;
   // exactly one field across config can be the primary key
   isPrimaryKey?: boolean;
+  // whether this field should be visible in the annotation interface
+  isVisible?: boolean;
   options?: string[];
   isNewColumn?: boolean; // true if this is a new column, not from CSV
   newColumnId?: string; // Reference to NewColumn if isNewColumn is true
@@ -100,12 +102,16 @@ export function FieldConfig({
   const [selectedColumns, setSelectedColumns] = useState<Set<string>>(new Set());
   const [columnValidationErrors, setColumnValidationErrors] = useState<Record<string, string>>({});
   const [datasetInfo, setDatasetInfo] = useState<{ name: string; description: string } | null>(null);
+  const [imageAuthConfig, setImageAuthConfig] = useState<{
+    isPrivate: boolean;
+    username?: string;
+    password?: string;
+  } | undefined>(undefined);
+  const [optionsInputValues, setOptionsInputValues] = useState<Record<string, string>>({});
+  const [rangeValidationErrors, setRangeValidationErrors] = useState<Record<string, { min?: string; max?: string }>>({});
 
   // Load dataset columns and existing field configuration
   useEffect(() => {
-    console.log('FieldConfig useEffect triggered');
-    console.log('datasetId:', datasetId);
-
     // Load dataset available columns and existing field configuration
     loadDatasetColumns();
     loadExistingFieldConfig();
@@ -116,10 +122,8 @@ export function FieldConfig({
     try {
       setLoading(true);
       setDatasetLoadingError(null);
-      console.log('Loading dataset columns for dataset:', datasetId);
 
       const dataset = await datasetsAPI.getById(datasetId);
-      console.log('Dataset response:', dataset);
 
       if (dataset && (dataset as any).availableColumns) {
         const availableColumns = (dataset as any).availableColumns;
@@ -129,9 +133,6 @@ export function FieldConfig({
         const manualColumns = availableColumns.filter(
           (col: any) => col.source === 'MANUAL',
         );
-
-        console.log('CSV columns:', csvColumns);
-        console.log('Manual columns:', manualColumns);
 
         setAvailableColumns({
           csvColumns: csvColumns.map((col: any) => ({
@@ -145,16 +146,9 @@ export function FieldConfig({
           })),
         });
       } else {
-        console.log('No available columns found in dataset');
         setAvailableColumns({ csvColumns: [], manualColumns: [] });
       }
     } catch (error: any) {
-      console.error('Error loading dataset columns:', error);
-      console.error('Error details:', {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-      });
       setDatasetLoadingError(
         'Failed to load dataset columns. Please try again.',
       );
@@ -184,6 +178,10 @@ export function FieldConfig({
                 ? Boolean(field.isAnnotationField)
                 : !Boolean(field.isMetadataField),
               isPrimaryKey: Boolean(field.isPrimaryKey),
+              // Ensure isVisible is always set - default to true for CSV fields, false for new columns
+              isVisible: field.isVisible !== undefined
+                ? Boolean(field.isVisible)
+                : !Boolean(field.isNewColumn), // CSV fields default to true, new columns to false
               options: field.options || [],
               isNewColumn: Boolean(field.isNewColumn),
               newColumnId: field.newColumnId || undefined,
@@ -207,22 +205,25 @@ export function FieldConfig({
       }
       setHasChanges(false);
     } catch (error) {
-      console.error('Error loading field config:', error);
+      showToast({
+        title: 'Error',
+        description: 'Failed to load field configuration',
+        type: 'error',
+      });
     }
   };
 
   const loadDatasetInfo = async () => {
     try {
-      console.log('Loading dataset info for header...');
       const dataset = await datasetsAPI.getById(datasetId);
-      console.log('Dataset info loaded:', dataset);
       setDatasetInfo({
         name: dataset.name,
         description: dataset.description || ''
       });
+      setImageAuthConfig(dataset.imageAuthConfig);
     } catch (err: any) {
-      console.error('Error loading dataset info:', err);
       setDatasetInfo(null);
+      setImageAuthConfig(undefined);
     }
   };
 
@@ -296,6 +297,7 @@ export function FieldConfig({
       isRequired: false,
       isAnnotationField: true,
       isPrimaryKey: false,
+      isVisible: true, // New annotation columns are visible by default
       options: [],
       isNewColumn: true,
       newColumnId: newColumn.id,
@@ -313,6 +315,35 @@ export function FieldConfig({
     setHasChanges(true);
   };
 
+  // Validation function for range values
+  const validateRangeValues = useCallback((min: number | undefined, max: number | undefined): { isValid: boolean; errors: { min?: string; max?: string } } => {
+    const errors: { min?: string; max?: string } = {};
+    
+    if (min !== undefined) {
+      if (min < 0) {
+        errors.min = 'Minimum value must be 0 or greater';
+      }
+    }
+    
+    if (max !== undefined) {
+      if (max < 0) {
+        errors.max = 'Maximum value must be 0 or greater';
+      }
+    }
+    
+    if (min !== undefined && max !== undefined) {
+      if (min >= max) {
+        errors.min = 'Minimum value must be less than maximum value';
+        errors.max = 'Maximum value must be greater than minimum value';
+      }
+    }
+    
+    return {
+      isValid: Object.keys(errors).length === 0,
+      errors
+    };
+  }, []);
+
   // Validation function to check for duplicate column names
   const validateColumnName = useCallback((columnName: string, excludeId?: string): { isValid: boolean; error?: string } => {
     if (!columnName || columnName.trim() === '') {
@@ -320,18 +351,6 @@ export function FieldConfig({
     }
 
     const trimmedName = columnName.trim();
-    
-    // Debug logging
-    console.log('Validating column name:', trimmedName);
-    console.log('Available CSV columns (first 10):', availableColumns.csvColumns.slice(0, 10).map(col => col.name));
-    console.log('New columns:', newColumns.map(col => col.columnName));
-    console.log('Annotation fields:', annotationFields.map(field => field.csvColumnName));
-    
-    // Check if the exact name exists
-    const exactMatch = availableColumns.csvColumns.find(col => col.name.toLowerCase() === trimmedName.toLowerCase());
-    if (exactMatch) {
-      console.log('EXACT MATCH FOUND:', exactMatch.name);
-    }
     
     // Check for duplicates in new columns
     const duplicateNewColumn = newColumns.find(col => 
@@ -374,6 +393,18 @@ export function FieldConfig({
     // Clear validation errors for this column
     setColumnValidationErrors((errors) => {
       const newErrors = { ...errors };
+      delete newErrors[id];
+      return newErrors;
+    });
+    // Clear options input values for this column
+    setOptionsInputValues((prev) => {
+      const newValues = { ...prev };
+      delete newValues[id];
+      return newValues;
+    });
+    // Clear range validation errors for this column
+    setRangeValidationErrors((prev) => {
+      const newErrors = { ...prev };
       delete newErrors[id];
       return newErrors;
     });
@@ -442,6 +473,19 @@ export function FieldConfig({
       return;
     }
 
+    // Check for range validation errors
+    const hasRangeErrors = Object.values(rangeValidationErrors).some(errors => 
+      errors.min || errors.max
+    );
+    if (hasRangeErrors) {
+      showToast({
+        title: 'Validation Error',
+        description: 'Please fix range validation errors before saving.',
+        type: 'error',
+      });
+      return;
+    }
+
     // Validate all new column names before saving
     const validationErrors: string[] = [];
     newColumns.forEach(column => {
@@ -462,9 +506,6 @@ export function FieldConfig({
 
     setLoading(true);
     try {
-      console.log('Saving field configuration for dataset:', datasetId);
-      console.log('Annotation fields:', annotationFields);
-
       await fieldSelectionAPI.saveDatasetFieldConfig({
         datasetId,
         annotationFields: annotationFields.map((field) => ({
@@ -474,6 +515,7 @@ export function FieldConfig({
           isRequired: field.isRequired,
           isAnnotationField: field.isAnnotationField,
           isPrimaryKey: field.isPrimaryKey,
+          isVisible: field.isVisible ?? !field.isNewColumn, // Ensure isVisible is always set
           options: field.options,
           isNewColumn: field.isNewColumn,
           newColumnId: field.newColumnId,
@@ -482,7 +524,7 @@ export function FieldConfig({
         newColumns: newColumns.map((column) => ({
           id: column.id,
           columnName: column.columnName,
-          columnType: column.columnType,
+          columnType: column.columnType as 'text' | 'number' | 'select' | 'selectrange' | 'multiselect',
           isRequired: column.isRequired,
           defaultValue: column.defaultValue,
           options: column.options,
@@ -497,7 +539,6 @@ export function FieldConfig({
         description: 'Field configuration saved successfully!',
         type: 'success',
       });
-      console.log('Field configuration saved successfully');
 
       // Dispatch event to notify other components that field config was saved
       window.dispatchEvent(
@@ -513,8 +554,6 @@ export function FieldConfig({
         router.push(`/dataset/${datasetId}`);
       }
     } catch (error: any) {
-      console.error('Error saving field configuration:', error);
-      
       // Extract validation errors from backend response
       let errorMessage = 'Failed to save field configuration. Please try again.';
       
@@ -604,6 +643,7 @@ export function FieldConfig({
         isRequired: false,
         isAnnotationField: false,
         isPrimaryKey: false,
+        isVisible: true,
         options: [],
       };
       
@@ -614,10 +654,10 @@ export function FieldConfig({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="field-config-container">
       {/* Header */}
-      <div className="mb-4">
-        <h1 className="text-3xl font-bold text-gray-900">
+      <div className="mb-4" data-testid="field-config-header">
+        <h1 className="text-3xl font-bold text-gray-900" data-testid="field-config-page-title">
           {datasetInfo?.name || 'Field Configuration'}
         </h1>
         <p className="text-gray-600 mt-1">
@@ -680,6 +720,7 @@ export function FieldConfig({
                     }
                   }}
                   className="bg-blue-600 hover:bg-blue-700"
+                  data-testid="field-config-go-to-upload-button"
                 >
                   Go to Upload
                 </Button>
@@ -701,18 +742,17 @@ export function FieldConfig({
         />
       )}
 
-
       {/* Configuration Tabs */}
       {(availableColumns.csvColumns.length > 0 ||
         availableColumns.manualColumns.length > 0) && (
-        <div className="space-y-6">
+        <div className="space-y-6" data-testid="field-config-content">
 
           {/* Annotation Fields Configuration */}
           <Card>
               <CardHeader>
                  <div className="flex items-center justify-between">
                    <div>
-                     <CardTitle className="flex items-center space-x-2">
+                     <CardTitle className="flex items-center space-x-2" data-testid="field-config-select-field-types-title">
                        <Database className="h-5 w-5 text-blue-600" />
                        <span>Select Field Types</span>
                      </CardTitle>
@@ -727,9 +767,10 @@ export function FieldConfig({
                    <div className="space-y-2">
                      {/* Header Row */}
                     <div className="grid grid-cols-12 gap-3 px-3 py-2 bg-gray-50 rounded-md font-medium text-sm text-gray-600">
-                      <div className="col-span-7">CSV Column</div>
+                      <div className="col-span-6">CSV Column</div>
                       <div className="col-span-3">Type</div>
                       <div className="col-span-1 text-center">Primary</div>
+                      <div className="col-span-1 text-center">Visible</div>
                       <div className="col-span-1 text-center">Actions</div>
                      </div>
 
@@ -744,14 +785,16 @@ export function FieldConfig({
                             "grid grid-cols-12 gap-3 items-start p-3 rounded-md border border-gray-200",
                              field.isNewColumn ? "bg-gray-200" : "bg-gray-50"
                            )}
+                          data-testid={`field-config-row-${field.id}`}
                          >
-                             <div className="col-span-7">
+                             <div className="col-span-6">
                                {field.isNewColumn ? (
                                  <div>
                                    <div className="space-y-1">
                                      <Input
                                        placeholder="Column name"
                                        value={newColumn?.columnName || ''}
+                                       data-testid={`field-config-column-name-input-${field.id}`}
                                         onChange={(e) => {
                                           const columnName = e.target.value;
                                           
@@ -829,7 +872,7 @@ export function FieldConfig({
                                      />
                                     {columnValidationErrors[field.newColumnId!] && (
                                        <div className="flex items-center space-x-1">
-                                         <AlertCircle className="h-3 w-3 text-red-500" />
+                                         <AlertCircle className="h-3 w-3 text-red-500" data-testid={`field-config-validation-error-icon-${field.id}`} />
                                          <p className="text-xs text-red-500">
                                           {columnValidationErrors[field.newColumnId!]}
                                          </p>
@@ -837,7 +880,7 @@ export function FieldConfig({
                                      )}
                                     {!columnValidationErrors[field.newColumnId!] && newColumn?.columnName && (
                                        <div className="flex items-center space-x-1">
-                                         <CheckCircle className="h-3 w-3 text-green-500" />
+                                         <CheckCircle className="h-3 w-3 text-green-500" data-testid={`field-config-validation-success-icon-${field.id}`} />
                                          <p className="text-xs text-green-600">
                                            Column name is available
                                          </p>
@@ -852,27 +895,60 @@ export function FieldConfig({
                                )}
                              </div>
 
-                           <div className="col-span-3">
-                             {field.isNewColumn ? (
-                               <div className="flex items-center h-8 px-2 py-1 bg-gray-50 border border-gray-200 rounded text-sm text-gray-700">
-                                 Text
-                               </div>
-                             ) : (
-                               <select
-                                 value={field.fieldType}
-                                 onChange={(e) =>
-                                   updateAnnotationField(field.id, {
-                                     fieldType: e.target.value as any,
-                                   })
-                                 }
-                                 className="w-full h-8 px-2 py-1 border border-gray-300 bg-white rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                               >
-                                 <option value="text">Text</option>
-                                 <option value="image">Image</option>
-                                 <option value="audio">Audio</option>
-                               </select>
-                             )}
-                           </div>
+                          <div className="col-span-3">
+                            {field.isNewColumn ? (
+                              <select
+                                value={newColumn?.columnType || 'text'}
+                                onChange={(e) => {
+                                  const newType = e.target.value as 'text' | 'number' | 'select' | 'selectrange' | 'multiselect';
+                                  updateNewColumn(field.newColumnId!, {
+                                    columnType: newType,
+                                  });
+                                  // Clear options input value when type changes
+                                  if (newType !== 'select' && newType !== 'multiselect') {
+                                    setOptionsInputValues((prev) => {
+                                      const newValues = { ...prev };
+                                      delete newValues[field.newColumnId!];
+                                      return newValues;
+                                    });
+                                  }
+                                  // Clear range validation errors when type changes
+                                  if (newType !== 'selectrange') {
+                                    setRangeValidationErrors((prev) => {
+                                      const newErrors = { ...prev };
+                                      delete newErrors[field.newColumnId!];
+                                      return newErrors;
+                                    });
+                                  }
+                                }}
+                                className="w-full h-8 px-2 py-1 border border-gray-300 bg-white rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                data-testid={`field-config-column-type-select-${field.id}`}
+                              >
+                                <option value="text">Text</option>
+                                <option value="number">Number</option>
+                                <option value="select">Select</option>
+                                <option value="selectrange">Select Range</option>
+                                <option value="multiselect">Multi Select</option>
+                              </select>
+                            ) : (
+                              <select
+                                value={field.fieldType}
+                                onChange={(e) =>
+                                  updateAnnotationField(field.id, {
+                                    fieldType: e.target.value as any,
+                                  })
+                                }
+                                className="w-full h-8 px-2 py-1 border border-gray-300 bg-white rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                data-testid={`field-config-field-type-select-${field.id}`}
+                              >
+                                <option value="text">Text</option>
+                                <option value="number">Number</option>
+                                <option value="markdown">Markdown</option>
+                                <option value="image">Image</option>
+                                <option value="audio">Audio</option>
+                              </select>
+                            )}
+                          </div>
 
                            {/* Primary Key checkbox */}
                            <div className="col-span-1 flex items-center justify-center">
@@ -881,36 +957,245 @@ export function FieldConfig({
                                checked={Boolean(field.isPrimaryKey)}
                                onChange={(e) => togglePrimaryKey(field.id, e.target.checked)}
                                disabled={field.isNewColumn}
+                               data-testid={`field-config-primary-key-checkbox-${field.id}`}
+                             />
+                           </div>
+
+                           {/* Visible checkbox - only for CSV fields */}
+                           <div className="col-span-1 flex items-center justify-center">
+                             <input
+                               type="checkbox"
+                               checked={Boolean(field.isVisible)}
+                               onChange={(e) => updateAnnotationField(field.id, {
+                                 isVisible: e.target.checked
+                               })}
+                               disabled={field.isNewColumn}
+                               data-testid={`field-config-visible-checkbox-${field.id}`}
                              />
                            </div>
 
                            <div className="col-span-1 flex items-center justify-center">
-                             <Button
-                               variant="ghost"
-                               size="sm"
-                               onClick={() => {
-                                 if (field.isNewColumn) {
-                                   removeNewColumn(field.newColumnId!);
-                                 }
-                                 removeAnnotationField(field.id);
-                               }}
-                               className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                             >
-                               <Trash2 className="h-3.5 w-3.5" />
-                             </Button>
-                           </div>
-                         </div>
-                       );
-                     })}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                if (field.isNewColumn) {
+                                  removeNewColumn(field.newColumnId!);
+                                }
+                                removeAnnotationField(field.id);
+                              }}
+                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                              data-testid={`field-config-delete-field-button-${field.id}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+
+                          {/* Conditional inputs for Select type */}
+                          {field.isNewColumn && newColumn?.columnType === 'select' && (
+                            <div className="col-span-12 mt-1 px-3">
+                              <Label className="text-xs text-gray-600 mb-1 block">
+                                Options (comma-separated)
+                              </Label>
+                              <Input
+                                placeholder="e.g., Excellent, Good, Average, Poor"
+                                value={optionsInputValues[field.newColumnId!] ?? newColumn?.options?.join(', ') ?? ''}
+                                onChange={(e) => {
+                                  // Just update the raw input value without parsing
+                                  setOptionsInputValues(prev => ({
+                                    ...prev,
+                                    [field.newColumnId!]: e.target.value
+                                  }));
+                                }}
+                                onBlur={(e) => {
+                                  // Parse into array only on blur
+                                  const optionsArray = e.target.value
+                                    .split(',')
+                                    .map(opt => opt.trim())
+                                    .filter(opt => opt.length > 0);
+                                  updateNewColumn(field.newColumnId!, {
+                                    options: optionsArray,
+                                  });
+                                }}
+                                className="h-9 text-sm bg-gray-50"
+                                data-testid={`field-config-select-options-input-${field.id}`}
+                              />
+                              {newColumn?.options && newColumn.options.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  {newColumn.options.map((option, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="inline-flex items-center px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-md border border-blue-200"
+                                    >
+                                      {option}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Conditional inputs for Multi Select type */}
+                          {field.isNewColumn && newColumn?.columnType === 'multiselect' && (
+                            <div className="col-span-12 mt-1 px-3">
+                              <Label className="text-xs text-gray-600 mb-1 block">
+                                Options (comma-separated)
+                              </Label>
+                              <Input
+                                placeholder="e.g., Feature A, Feature B, Feature C, Feature D"
+                                value={optionsInputValues[field.newColumnId!] ?? newColumn?.options?.join(', ') ?? ''}
+                                onChange={(e) => {
+                                  // Just update the raw input value without parsing
+                                  setOptionsInputValues(prev => ({
+                                    ...prev,
+                                    [field.newColumnId!]: e.target.value
+                                  }));
+                                }}
+                                onBlur={(e) => {
+                                  // Parse into array only on blur
+                                  const optionsArray = e.target.value
+                                    .split(',')
+                                    .map(opt => opt.trim())
+                                    .filter(opt => opt.length > 0);
+                                  updateNewColumn(field.newColumnId!, {
+                                    options: optionsArray,
+                                  });
+                                }}
+                                className="h-9 text-sm bg-gray-50"
+                                data-testid={`field-config-multiselect-options-input-${field.id}`}
+                              />
+                              {newColumn?.options && newColumn.options.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  {newColumn.options.map((option, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="inline-flex items-center px-2 py-1 bg-green-50 text-green-700 text-xs rounded-md border border-green-200"
+                                    >
+                                      {option}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Conditional inputs for Select Range type */}
+                          {field.isNewColumn && newColumn?.columnType === 'selectrange' && (
+                            <div className="col-span-12 mt-1 px-3">
+                              <Label className="text-xs text-gray-600 mb-1 block">
+                                Range Values
+                              </Label>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <Label className="text-xs text-gray-500 mb-1 block">
+                                    Min Value
+                                  </Label>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    placeholder="e.g., 0"
+                                    value={newColumn?.validation?.min ?? ''}
+                                    onChange={(e) => {
+                                      const minValue = e.target.value ? parseInt(e.target.value) : undefined;
+                                      const maxValue = newColumn?.validation?.max;
+                                      
+                                      // Validate the range
+                                      const validation = validateRangeValues(minValue, maxValue);
+                                      setRangeValidationErrors(prev => ({
+                                        ...prev,
+                                        [field.newColumnId!]: validation.errors
+                                      }));
+                                      
+                                      updateNewColumn(field.newColumnId!, {
+                                        validation: {
+                                          ...newColumn?.validation,
+                                          min: minValue,
+                                        },
+                                      });
+                                    }}
+                                    className={cn(
+                                      "h-9 text-sm bg-gray-50",
+                                      rangeValidationErrors[field.newColumnId!]?.min 
+                                        ? "border-red-500 focus:border-red-500 focus:ring-red-500" 
+                                        : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                    )}
+                                    data-testid={`field-config-range-min-input-${field.id}`}
+                                  />
+                                  {rangeValidationErrors[field.newColumnId!]?.min && (
+                                    <div className="flex items-center space-x-1 mt-1">
+                                      <AlertCircle className="h-3 w-3 text-red-500" />
+                                      <p className="text-xs text-red-500">
+                                        {rangeValidationErrors[field.newColumnId!].min}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                                <div>
+                                  <Label className="text-xs text-gray-500 mb-1 block">
+                                    Max Value
+                                  </Label>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    placeholder="e.g., 10"
+                                    value={newColumn?.validation?.max ?? ''}
+                                    onChange={(e) => {
+                                      const maxValue = e.target.value ? parseInt(e.target.value) : undefined;
+                                      const minValue = newColumn?.validation?.min;
+                                      
+                                      // Validate the range
+                                      const validation = validateRangeValues(minValue, maxValue);
+                                      setRangeValidationErrors(prev => ({
+                                        ...prev,
+                                        [field.newColumnId!]: validation.errors
+                                      }));
+                                      
+                                      updateNewColumn(field.newColumnId!, {
+                                        validation: {
+                                          ...newColumn?.validation,
+                                          max: maxValue,
+                                        },
+                                      });
+                                    }}
+                                    className={cn(
+                                      "h-9 text-sm bg-gray-50",
+                                      rangeValidationErrors[field.newColumnId!]?.max 
+                                        ? "border-red-500 focus:border-red-500 focus:ring-red-500" 
+                                        : "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                                    )}
+                                    data-testid={`field-config-range-max-input-${field.id}`}
+                                  />
+                                  {rangeValidationErrors[field.newColumnId!]?.max && (
+                                    <div className="flex items-center space-x-1 mt-1">
+                                      <AlertCircle className="h-3 w-3 text-red-500" />
+                                      <p className="text-xs text-red-500">
+                                        {rangeValidationErrors[field.newColumnId!].max}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              {newColumn?.validation?.min !== undefined && newColumn?.validation?.max !== undefined && (
+                                <div className="mt-1.5 p-2 bg-green-50 rounded-md">
+                                  <p className="text-xs text-green-700">
+                                    Range: {newColumn.validation.min} - {newColumn.validation.max}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                  ) : (
-                   <div className="text-center py-8 text-gray-500">
+                   <div className="text-center py-8 text-gray-500" data-testid="field-config-empty-state">
                      <Database className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                      <p className="text-base font-medium mb-1">
                        Please select columns from above
                      </p>
                      <p className="text-sm">
-                       Click on columns in the "Select Columns" section to add them here
+                       Click on columns in the &quot;Select Columns&quot; section to add them here
                      </p>
                    </div>
                  )}
@@ -918,10 +1203,19 @@ export function FieldConfig({
               
                {/* Fixed Footer with Save Button */}
                <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
+                {/* Image Authentication Config - Only shown when there are image fields */}
+          {annotationFields.some((field) => field.fieldType === 'image') && (
+            <ImageAuthConfigCard
+              datasetId={datasetId}
+              initialConfig={imageAuthConfig}
+              onConfigSaved={loadDatasetInfo}
+            />
+          )}
                  <div className="flex justify-between">
                    <Button
                      onClick={addNewColumn}
                      size="sm"
+                     data-testid="field-config-add-column-button"
                      className="bg-green-600 hover:bg-green-700 h-8 px-3 text-sm"
                    >
                      <Plus className="h-3.5 w-3.5 mr-1.5" />
@@ -931,6 +1225,7 @@ export function FieldConfig({
                      variant="outline"
                      onClick={handleSave}
                      disabled={!hasChanges || loading}
+                     data-testid="field-config-save-button"
                      className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600 h-8 px-3 text-sm"
                    >
                      <Save className="h-3.5 w-3.5 mr-1.5" />
@@ -949,7 +1244,7 @@ export function FieldConfig({
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <CheckCircle className="h-5 w-5 text-green-600" />
-              <span>Configuration Status</span>
+              <span data-testid="field-config-status-title">Configuration Status</span>
             </CardTitle>
           </CardHeader>
           <CardContent>

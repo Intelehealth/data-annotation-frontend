@@ -16,7 +16,6 @@ import { dashboardAPI } from '@/lib/api/dashboard';
 import { useEffect, useState } from 'react';
 import {
   DashboardStats,
-  ProgressChart,
   ActivityTimeline,
 } from '@/components/dashboard-components/dashboard-stats';
 
@@ -72,8 +71,7 @@ export default function Dashboard() {
         setRecentDatasets(datasetsData);
         setRecentActivities(activitiesData);
         setLastRefresh(new Date());
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
+      } catch {
       } finally {
         setLoading(false);
       }
@@ -97,8 +95,7 @@ export default function Dashboard() {
       setRecentDatasets(datasetsData);
       setRecentActivities(activitiesData);
       setLastRefresh(new Date());
-    } catch (error) {
-      console.error('Error refreshing dashboard data:', error);
+    } catch {
     } finally {
       setRefreshing(false);
     }
@@ -127,15 +124,15 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6" data-testid="dashboard-container">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" data-testid="dashboard-header">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-3xl font-bold text-gray-900" data-testid="dashboard-title">
             Welcome back, {user?.firstName}!
           </h1>
           <p className="text-gray-600 mt-1">
-            Here's what's happening with your data annotation projects today.
+            Here&apos;s what&apos;s happening with your data annotation projects today.
           </p>
           <p className="text-xs text-gray-500 mt-1">
             Last updated: {formatLastRefresh(lastRefresh)}
@@ -146,6 +143,7 @@ export default function Dashboard() {
             variant="outline"
             onClick={handleRefresh}
             disabled={refreshing}
+            data-testid="dashboard-refresh-button"
             className="flex items-center space-x-2"
           >
             <RefreshCw
@@ -154,7 +152,7 @@ export default function Dashboard() {
             <span>Refresh</span>
           </Button>
           <Link href="/dataset/add-dataset">
-            <Button className="bg-black hover:bg-gray-800 text-white">
+            <Button data-testid="dashboard-new-dataset-button" className="bg-black hover:bg-gray-800 text-white">
               <Plus className="h-4 w-4 mr-2" />
               New Dataset
             </Button>
@@ -173,74 +171,68 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Datasets */}
         <div>
-          <Link href="/dataset">
-            <Card className="cursor-pointer hover:shadow-md transition-shadow h-full flex flex-col">
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Folder className="h-5 w-5" />
-                  <span>Recent Datasets</span>
-                </CardTitle>
-                <CardDescription>
-                  Your most recently created datasets
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col">
-                <div className="space-y-4">
-                  {recentDatasets.length > 0 ? (
-                    recentDatasets.map((dataset) => (
-                      <div
-                        key={dataset._id}
-                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex-1">
-                          <h3 className="font-medium text-gray-900">
-                            {dataset.name}
-                          </h3>
-                          <p className="text-sm text-gray-600">
-                            {dataset.description}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            Type: {dataset.datasetType}
-                          </p>
-                        </div>
-                        <div className="flex items-center space-x-4">
-                          <Badge variant="outline">{dataset.datasetType}</Badge>
-                          <Link href={`/dataset/${dataset._id}`}>
-                            <Button variant="outline" size="sm">
-                              View
-                            </Button>
-                          </Link>
-                        </div>
+          <Card className="h-full flex flex-col">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Folder className="h-5 w-5" />
+                <span>Recent Datasets</span>
+              </CardTitle>
+              <CardDescription>
+                Your most recently created datasets
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1 flex flex-col">
+              <div className="space-y-4">
+                {recentDatasets.length > 0 ? (
+                  recentDatasets.map((dataset) => (
+                    <div
+                      key={dataset._id}
+                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-900">
+                          {dataset.name}
+                        </h3>
+                        <p className="text-sm text-gray-600">
+                          {dataset.description}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Type: {dataset.datasetType}
+                        </p>
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <Folder className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                      <p>No datasets yet</p>
-                      <Link href="/dataset/add-dataset">
-                        <Button variant="outline" className="mt-2">
-                          Create your first dataset
-                        </Button>
-                      </Link>
+                      <div className="flex items-center space-x-4">
+                        <Badge variant="outline">{dataset.datasetType}</Badge>
+                        <Link href={`/dataset/${dataset._id}`}>
+                          <Button variant="outline" size="sm">
+                            View
+                          </Button>
+                        </Link>
+                      </div>
                     </div>
-                  )}
-                </div>
-                {recentDatasets.length > 0 && (
-                  <div
-                    className="mt-4 pt-4 border-t"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Link href="/dataset">
-                      <Button variant="outline" className="w-full">
-                        View All Datasets
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <Folder className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p>No datasets yet</p>
+                    <Link href="/dataset/add-dataset">
+                      <Button variant="outline" className="mt-2">
+                        Create your first dataset
                       </Button>
                     </Link>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </Link>
+              </div>
+              {recentDatasets.length > 0 && (
+                <div className="mt-4 pt-4 border-t">
+                  <Link href="/dataset">
+                    <Button variant="outline" className="w-full">
+                      View All Datasets
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {/* Recent Activity */}

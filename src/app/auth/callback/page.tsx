@@ -60,10 +60,10 @@ export default function AuthCallbackPage() {
           setMessage('Authentication successful! Redirecting to dashboard...');
 
           setTimeout(() => router.push('/dashboard'), 1500);
-        } catch (jwtError) {
+        } catch {
           throw new Error('AUTH_TOKEN_INVALID');
         }
-      } catch (error) {
+      } catch {
         setStatus('error');
         setMessage('Authentication failed. Redirecting to login...');
         setTimeout(() => router.push('/login'), 3000);
@@ -78,7 +78,7 @@ export default function AuthCallbackPage() {
       <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
         <div className="mb-6">
           {status === 'loading' && (
-            <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto" />
+            <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto" data-testid="auth-callback-loading" />
           )}
           {status === 'success' && (
             <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto">
@@ -116,16 +116,16 @@ export default function AuthCallbackPage() {
           )}
         </div>
 
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4" data-testid="auth-callback-status-title">
           {status === 'loading' && 'Authenticating...'}
           {status === 'success' && 'Success!'}
           {status === 'error' && 'Authentication Failed'}
         </h2>
 
-        <p className="text-gray-600 mb-6">{message}</p>
+        <p className="text-gray-600 mb-6" data-testid="auth-callback-message">{message}</p>
 
         {status === 'loading' && (
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="w-full bg-gray-200 rounded-full h-2" data-testid="auth-callback-progress">
             <div className="bg-blue-600 h-2 rounded-full animate-pulse"></div>
           </div>
         )}

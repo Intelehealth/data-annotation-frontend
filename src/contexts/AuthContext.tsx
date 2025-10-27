@@ -79,7 +79,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const user = Array.isArray(parsedUser) ? parsedUser[0] : parsedUser;
           setUser(user);
         } catch (error) {
-          console.error('Error parsing user data:', error);
           localStorage.removeItem('accessToken');
           localStorage.removeItem('user');
           setUser(null);
@@ -126,7 +125,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return { success: true };
     } catch (error: any) {
-      console.error('Login error:', error);
       const errorMessage = error.response?.data?.message || 'Login failed';
       return { success: false, error: errorMessage };
     }
@@ -159,7 +157,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return { success: true };
     } catch (error: any) {
-      console.error('Signup error:', error);
       const errorMessage = error.response?.data?.message || 'Signup failed';
       return { success: false, error: errorMessage };
     }
@@ -192,7 +189,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return { success: true };
     } catch (error: any) {
-      console.error('Admin signup error:', error);
       const errorMessage = error.response?.data?.message || 'Admin signup failed';
       return { success: false, error: errorMessage };
     }
@@ -212,7 +208,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return { success: true };
     } catch (error: any) {
-      console.error('Profile update error:', error);
       const errorMessage = error.response?.data?.message || 'Profile update failed';
       return { success: false, error: errorMessage };
     }
@@ -226,7 +221,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await usersAPI.changePassword(passwordData);
       return { success: true };
     } catch (error: any) {
-      console.error('Password change error:', error);
       const errorMessage = error.response?.data?.message || 'Password change failed';
       return { success: false, error: errorMessage };
     }

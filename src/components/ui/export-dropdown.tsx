@@ -1,14 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { FileText, ChevronDown } from 'lucide-react';
+import { FileText} from 'lucide-react';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from '@/components/ui/select';
 
 export interface ExportOption {
@@ -36,15 +34,18 @@ export function ExportDropdown({ options, disabled = false }: ExportDropdownProp
 
   return (
     <Select value={selectedValue} onValueChange={handleValueChange} disabled={disabled}>
-      <SelectTrigger className="w-full bg-green-600 hover:bg-green-700 text-white border-green-600 font-medium px-4 py-2 [&>svg]:!text-white [&>svg]:!fill-white [&>svg]:stroke-white [&>svg]:!stroke-white">
+      <SelectTrigger 
+        data-testid="export-dropdown-trigger"
+        className="w-full bg-green-600 hover:bg-green-700 text-white border-green-600 font-medium px-4 py-2 [&>svg]:!text-white [&>svg]:!fill-white [&>svg]:stroke-white [&>svg]:!stroke-white"
+      >
         <div className="flex items-center text-white">
           <FileText className="h-4 w-4 mr-2 text-white" />
           <span className="text-white">Export CSV</span>
         </div>
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent data-testid="export-dropdown-menu">
         {options.map((option) => (
-          <SelectItem key={option.id} value={option.id}>
+          <SelectItem key={option.id} value={option.id} data-testid={`export-option-${option.id}`}>
             <div className="flex flex-col items-start">
               <div className="font-medium text-sm">{option.label}</div>
               <div className="text-xs text-gray-500 mt-1">{option.description}</div>

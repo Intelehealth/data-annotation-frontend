@@ -34,58 +34,7 @@ export interface CSVImport {
   completedAt?: string;
 }
 
-export interface AnnotationField {
-  csvColumnName: string;
-  fieldName: string;
-  fieldType: 'text' | 'image' | 'audio';
-  isRequired: boolean;
-  // true if it needs annotation (right panel); false if metadata (left)
-  isAnnotationField: boolean;
-  // optional: whether this field is the unique primary key
-  isPrimaryKey?: boolean;
-  options?: string[];
-  instructions?: string;
-  isNewColumn?: boolean; // true if this is a new column, not from CSV  
-  newColumnId?: string; // Reference to NewColumn if isNewColumn is true
-}
 
-export interface AnnotationConfig {
-  _id: string;
-  csvImportId: string;
-  userId?: string;
-  annotationFields: AnnotationField[];
-  annotationLabels?: any[]; // Add annotation labels
-  rowAnnotations: any[];
-  totalRows: number;
-  completedRows: number;
-  lastViewedRow?: number; // NEW: Track last viewed row for resume
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface PatchAnnotationConfigRequest {
-  annotationFields?: AnnotationField[];
-  annotationLabels?: any[];
-  lastViewedRow?: number; // NEW: Allow updating last viewed row
-  completedRows?: number; // NEW: Allow updating completed count
-  status?: string;
-}
-
-export interface PatchRowAnnotationRequest {
-  annotations: Record<string, any>;
-  confidence?: number;
-  notes?: string;
-  status?: string;
-}
-
-export interface PatchAnnotationResponse {
-  success: boolean;
-  data: any;
-  updatedFields: number;
-  changedFields: string[];
-  updatedAt: string;
-}
 
 export class CSVImportsAPI {
   // Get CSV import by ID with full data including rowData
@@ -105,15 +54,6 @@ export class CSVImportsAPI {
     return response.data;
   }
 
-  // Get annotation config for CSV import
-  static async getAnnotationConfig(
-    csvImportId: string,
-  ): Promise<AnnotationConfig> {
-    const response = await jsonApi.get(
-      `/csv-processing/field-selection/${csvImportId}`,
-    );
-    return response.data;
-  }
 
   // Get CSV imports by dataset ID
   static async getByDataset(datasetId: string): Promise<CSVImport[]> {
@@ -123,20 +63,6 @@ export class CSVImportsAPI {
     return response.data;
   }
 
-  // Get annotation progress
-  static async getAnnotationProgress(csvImportId: string): Promise<{
-    totalRows: number;
-    completedRows: number;
-    pendingRows: number;
-    inProgressRows: number;
-    status: string;
-    lastViewedRow?: number; // NEW: Track last viewed row for resume
-  }> {
-    const response = await jsonApi.get(
-      `/csv-processing/field-selection/${csvImportId}/progress`,
-    );
-    return response.data;
-  }
 
   // Delete CSV import
   static async deleteCSVImport(
@@ -149,128 +75,4 @@ export class CSVImportsAPI {
     return response.data;
   }
 
-  // PATCH Methods for Partial Updates
-  static async patchAnnotationConfig(
-    csvImportId: string,
-    patchData: PatchAnnotationConfigRequest,
-  ): Promise<PatchAnnotationResponse> {
-    const response = await jsonApi.patch(
-      `/csv-processing/field-selection/${csvImportId}`,
-      patchData,
-    );
-    return response.data;
-  }
-
-  static async patchRowAnnotation(
-    csvImportId: string,
-    rowIndex: number,
-    patchData: PatchRowAnnotationRequest,
-  ): Promise<PatchAnnotationResponse> {
-    const response = await jsonApi.patch(
-      `/csv-processing/field-selection/${csvImportId}/row/${rowIndex}`,
-      patchData,
-    );
-    return response.data;
-  }
-
-  static async patchAnnotationField(
-    csvImportId: string,
-    fieldIndex: number,
-    patchData: PatchAnnotationConfigRequest,
-  ): Promise<PatchAnnotationResponse> {
-    const response = await jsonApi.patch(
-      `/csv-processing/field-selection/${csvImportId}/field/${fieldIndex}`,
-      patchData,
-    );
-    return response.data;
-  }
-
-  // Direct CSV row data update method
-  static async patchCSVRowData(
-    csvImportId: string,
-    rowIndex: number,
-    updatedData: Record<string, any>,
-  ): Promise<PatchAnnotationResponse> {
-    const response = await jsonApi.patch(
-      `/csv-processing/data/${csvImportId}/row/${rowIndex}`,
-      { data: updatedData },
-    );
-    return response.data;
-  }
-
-  // Utility method to create partial update objects
-  static createPartialUpdate<T extends Record<string, any>>(updates: Partial<T>): Partial<T> {
-    // Remove undefined values to ensure only changed fields are sent
-    const cleanedUpdates: Partial<T> = {};
-    Object.keys(updates).forEach(key => {
-      if (updates[key as keyof T] !== undefined) {
-        cleanedUpdates[key as keyof T] = updates[key as keyof T];
-      }
-    });
-    return cleanedUpdates;
-  }
-
-  // NEW HELPER METHODS FOR ANNOTATION PROGRESS
-
-  // Helper: Mark row as completed
-  static async markRowCompleted(
-    csvImportId: string,
-    rowIndex: number
-  ): Promise<PatchAnnotationResponse> {
-    return this.patchCSVRowData(csvImportId, rowIndex, {
-      processed: true,
-      completed: true,
-      completedAt: new Date().toISOString()
-    });
-  }
-
-  // Helper: Update annotation progress (last viewed row + completed count)
-  static async updateAnnotationProgress(
-    csvImportId: string,
-    lastViewedRow: number,
-    completedRows: number
-  ): Promise<PatchAnnotationResponse> {
-    return this.patchAnnotationConfig(csvImportId, {
-      lastViewedRow,
-      completedRows
-    });
-  }
-
-  // Helper: Get detailed progress with row completion statuses
-  static async getDetailedProgress(csvImportId: string) {
-    try {
-      const response = await jsonApi.get(
-        `/csv-processing/field-selection/${csvImportId}/detailed-progress`,
-      );
-      return response.data;
-    } catch (error) {
-      console.error('Error getting detailed progress:', error);
-      throw error;
-    }
-  }
-
-  // Helper: Check if annotation can be resumed (has progress)
-  static async canResumeAnnotation(csvImportId: string): Promise<{
-    canResume: boolean;
-    lastViewedRow: number;
-    completedRows: number;
-    totalRows: number;
-    progressPercentage: number;
-  }> {
-    try {
-      const response = await jsonApi.get(
-        `/csv-processing/field-selection/${csvImportId}/can-resume`,
-      );
-      return response.data;
-    } catch (error) {
-      console.error('Error checking resume capability:', error);
-      return {
-        canResume: false,
-        lastViewedRow: 0,
-        completedRows: 0,
-        totalRows: 0,
-        progressPercentage: 0
-      };
-    }
-  }
 }

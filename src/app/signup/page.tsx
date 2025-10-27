@@ -16,7 +16,6 @@ import {
   Shield,
   Users,
   Zap,
-  CheckCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,7 +33,6 @@ export default function SignupPage() {
     register,
     handleSubmit,
     formState: { errors, isValid },
-    watch,
   } = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
     mode: 'onChange',
@@ -141,7 +139,7 @@ export default function SignupPage() {
 
           {/* Error Message */}
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl" data-testid="signup-error-message">
               <p className="text-sm text-red-600 flex items-center">
                 <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
                 {error}
@@ -166,6 +164,7 @@ export default function SignupPage() {
                     type="text"
                     placeholder="First name"
                     {...register('firstName')}
+                    data-testid="signup-first-name-input"
                     className={`pl-12 h-11 border-2 focus:ring-4 focus:ring-blue-100 rounded-xl text-sm transition-all duration-200 ${
                       errors.firstName
                         ? 'border-red-300 focus:border-red-500'
@@ -194,6 +193,7 @@ export default function SignupPage() {
                     type="text"
                     placeholder="Last name"
                     {...register('lastName')}
+                    data-testid="signup-last-name-input"
                     className={`pl-12 h-11 border-2 focus:ring-4 focus:ring-blue-100 rounded-xl text-sm transition-all duration-200 ${
                       errors.lastName
                         ? 'border-red-300 focus:border-red-500'
@@ -225,6 +225,7 @@ export default function SignupPage() {
                   type="email"
                   placeholder="Enter your email"
                   {...register('email')}
+                  data-testid="signup-email-input"
                   className={`pl-12 h-11 border-2 focus:ring-4 focus:ring-blue-100 rounded-xl text-sm transition-all duration-200 ${
                     errors.email
                       ? 'border-red-300 focus:border-red-500'
@@ -253,6 +254,7 @@ export default function SignupPage() {
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Create a strong password"
                   {...register('password')}
+                  data-testid="signup-password-input"
                   className={`pl-12 pr-12 h-11 border-2 focus:ring-4 focus:ring-blue-100 rounded-xl text-sm transition-all duration-200 ${
                     errors.password
                       ? 'border-red-300 focus:border-red-500'
@@ -263,6 +265,7 @@ export default function SignupPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  data-testid="signup-show-password-button"
                   className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200"
                   disabled={isLoading}
                 >
@@ -295,6 +298,7 @@ export default function SignupPage() {
                   type={showConfirmPassword ? 'text' : 'password'}
                   placeholder="Confirm your password"
                   {...register('confirmPassword')}
+                  data-testid="signup-confirm-password-input"
                   className={`pl-12 pr-12 h-11 border-2 focus:ring-4 focus:ring-blue-100 rounded-xl text-sm transition-all duration-200 ${
                     errors.confirmPassword
                       ? 'border-red-300 focus:border-red-500'
@@ -305,6 +309,7 @@ export default function SignupPage() {
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  data-testid="signup-show-confirm-password-button"
                   className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200"
                   disabled={isLoading}
                 >
@@ -326,11 +331,12 @@ export default function SignupPage() {
             <Button
               type="submit"
               disabled={!isValid || isLoading}
+              data-testid="signup-submit-button"
               className="w-full h-10 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-xl transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-sm shadow-lg hover:shadow-xl"
             >
               {isLoading ? (
                 <div className="flex items-center">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" data-testid="signup-loading-spinner"></div>
                   Creating Account...
                 </div>
               ) : (
@@ -355,7 +361,9 @@ export default function SignupPage() {
           </div>
 
           {/* Google OAuth */}
-          <GoogleOAuth mode="signup" disabled={isLoading} />
+          <div data-testid="signup-google-button">
+            <GoogleOAuth mode="signup" disabled={isLoading} />
+          </div>
 
           {/* Spacing */}
           <div className="mb-4"></div>
@@ -366,6 +374,7 @@ export default function SignupPage() {
               Already have an account?{' '}
               <Link
                 href="/login"
+                data-testid="signup-login-link"
                 className="text-blue-600 hover:text-blue-700 font-medium underline"
               >
                 Sign in here

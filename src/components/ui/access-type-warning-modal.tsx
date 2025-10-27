@@ -34,7 +34,7 @@ export function AccessTypeWarningModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" data-testid="access-warning-modal">
         <DialogHeader>
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-amber-100 rounded-full">
@@ -125,6 +125,7 @@ export function AccessTypeWarningModal({
             variant="outline"
             onClick={onClose}
             disabled={isSaving}
+            data-testid="access-warning-modal-cancel-button"
             className="flex-1"
           >
             Cancel
@@ -132,6 +133,7 @@ export function AccessTypeWarningModal({
           <Button
             onClick={onConfirm}
             disabled={isSaving}
+            data-testid="access-warning-modal-confirm-button"
             className={`flex-1 ${
               isMakingPublic
                 ? 'bg-blue-600 hover:bg-blue-700'

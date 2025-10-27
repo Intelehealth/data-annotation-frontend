@@ -52,7 +52,7 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, logout, updateProfile, changePassword } = useAuth();
+  const { user, updateProfile, changePassword } = useAuth();
   const { showToast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -113,10 +113,10 @@ export default function ProfilePage() {
       setTimeout(() => {
         router.push('/dashboard');
       }, 1500);
-    } catch (error: any) {
+    } catch (error: unknown) {
       showToast({
         title: 'Failed to Update Profile',
-        description: error.message || 'Please try again or check your connection.',
+        description: error instanceof Error ? error.message : 'Please try again or check your connection.',
         type: 'error',
       });
     } finally {
@@ -172,6 +172,7 @@ export default function ProfilePage() {
                   id="firstName"
                   placeholder="Enter your first name"
                   {...register('firstName')}
+                  data-testid="profile-first-name-input"
                   className={cn(
                     'h-10',
                     errors.firstName &&
@@ -197,6 +198,7 @@ export default function ProfilePage() {
                   id="lastName"
                   placeholder="Enter your last name"
                   {...register('lastName')}
+                  data-testid="profile-last-name-input"
                   className={cn(
                     'h-10',
                     errors.lastName &&
@@ -342,6 +344,7 @@ export default function ProfilePage() {
               <Button
                 type="submit"
                 disabled={isSubmitting}
+                data-testid="profile-save-button"
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 {isSubmitting ? (

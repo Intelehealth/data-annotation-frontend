@@ -7,7 +7,7 @@ import { Sidebar } from '@/components/sidebar';
 import { DatasetManagement } from '@/components/dataset-components/dataset-management';
 
 export default function DatasetPage() {
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {

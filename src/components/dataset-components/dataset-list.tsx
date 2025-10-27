@@ -32,15 +32,11 @@ import { useAuth } from '@/contexts/AuthContext';
 
 interface DatasetListProps {
   onAddDataset?: () => void;
-  onEditDataset?: (dataset: DatasetResponse) => void;
-  onDeleteDataset?: (dataset: DatasetResponse) => void;
   className?: string;
 }
 
 export function DatasetList({
   onAddDataset,
-  onEditDataset,
-  onDeleteDataset,
   className,
 }: DatasetListProps) {
   const router = useRouter();
@@ -124,7 +120,6 @@ export function DatasetList({
       setIsDeleting(true);
       await datasetsAPI.delete(datasetToDelete._id);
       await loadDatasets(); // Reload the list
-      onDeleteDataset?.(datasetToDelete);
 
       showToast({
         title: 'Dataset Deleted',
@@ -205,6 +200,7 @@ export function DatasetList({
   };
 
   const isOwner = (dataset: DatasetResponse) => {
+    if (!dataset.userId) return false;
     const userId = typeof dataset.userId === 'string' ? dataset.userId : dataset.userId._id;
     return userId === user?._id;
   };
@@ -226,7 +222,7 @@ export function DatasetList({
     return (
       <div className="text-center p-8">
         <p className="text-red-600 mb-4">{error}</p>
-        <Button onClick={loadDatasets} variant="outline">
+        <Button onClick={loadDatasets} variant="outline" data-testid="dataset-list-retry-button">
           Try Again
         </Button>
       </div>
@@ -238,12 +234,12 @@ export function DatasetList({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Datasets</h1>
+          <h1 className="text-3xl font-bold text-gray-900" data-testid="dataset-list-page-title">Datasets</h1>
           <p className="text-gray-600 mt-0.5">
             Manage your data annotation datasets
           </p>
         </div>
-        <Button onClick={onAddDataset} className="flex items-center gap-2">
+        <Button onClick={onAddDataset} data-testid="dataset-list-add-button" className="flex items-center gap-2">
           <Plus className="h-4 w-4" />
           Add Dataset
         </Button>
@@ -257,6 +253,7 @@ export function DatasetList({
             placeholder="Search datasets..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            data-testid="dataset-list-search-input"
             className="pl-10 h-9"
           />
         </div>
@@ -266,7 +263,7 @@ export function DatasetList({
       {filteredDatasets.length === 0 ? (
         <div className="text-center py-12">
           <Database className="h-16 w-16 mx-auto text-gray-300 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
+          <h3 className="text-lg font-medium text-gray-900 mb-2" data-testid="dataset-list-empty-state">
             {searchQuery ? 'No datasets found' : 'No datasets yet'}
           </h3>
           <p className="text-gray-600 mb-4">
@@ -289,6 +286,7 @@ export function DatasetList({
               key={dataset._id}
               className="hover:shadow-lg transition-shadow cursor-pointer"
               onClick={() => handleCardClick(dataset)}
+              data-testid={`dataset-card-${dataset._id}`}
             >
               <CardHeader className="pb-1">
                 <div className="flex items-start justify-between">
@@ -314,7 +312,7 @@ export function DatasetList({
                     {/* Owner info for non-owned datasets */}
                     {!isOwner(dataset) && (
                       <div className="mt-1 text-xs text-gray-500">
-                        by {typeof dataset.userId === 'string' ? 'Unknown' : `${dataset.userId.firstName} ${dataset.userId.lastName}`}
+                        by {!dataset.userId || typeof dataset.userId === 'string' ? 'Unknown' : `${dataset.userId.firstName} ${dataset.userId.lastName}`}
                       </div>
                     )}
                   </div>
@@ -328,6 +326,7 @@ export function DatasetList({
                            e.stopPropagation();
                            router.push(`/dataset/${dataset._id}?tab=settings`);
                          }}
+                         data-testid={`dataset-settings-button-${dataset._id}`}
                          className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                        >
                          <Settings className="h-4 w-4" />
@@ -342,6 +341,7 @@ export function DatasetList({
                           e.stopPropagation();
                           handleDeleteClick(dataset);
                         }}
+                        data-testid={`dataset-delete-button-${dataset._id}`}
                         className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
                       >
                         <Trash2 className="h-4 w-4" />

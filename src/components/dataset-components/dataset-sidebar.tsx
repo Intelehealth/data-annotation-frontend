@@ -8,14 +8,12 @@ import {
   Upload,
   Database,
   FileText,
-  BarChart3,
-  Tag,
-  Layers,
   Loader2,
   Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { datasetsAPI, DatasetResponse } from '@/lib/api/datasets';
+import { useToast } from '@/components/ui/toast';
 
 interface DatasetSidebarProps {
   activeTab: string;
@@ -30,6 +28,7 @@ export function DatasetSidebar({
   datasetId,
   className,
 }: DatasetSidebarProps) {
+  const { showToast } = useToast();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [dataset, setDataset] = useState<DatasetResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,7 +40,11 @@ export function DatasetSidebar({
         const data = await datasetsAPI.getById(datasetId);
         setDataset(data);
       } catch (error) {
-        console.error('Error loading dataset:', error);
+        showToast({
+          type: 'error',
+          title: 'Dataset Loading Error',
+          description: 'Failed to load dataset information. Please try again.',
+        });
         setDataset(null);
       } finally {
         setLoading(false);
@@ -120,6 +123,7 @@ export function DatasetSidebar({
             size="icon"
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="h-6 w-6 rounded-lg hover:bg-gray-100 transition-colors"
+            data-testid="dataset-sidebar-collapse-button"
           >
             {isCollapsed ? (
               <ChevronRight className="h-3 w-3" />
@@ -156,6 +160,7 @@ export function DatasetSidebar({
                 isCollapsed && 'justify-center px-2',
               )}
               title={isCollapsed ? item.label : undefined}
+              data-testid={`dataset-sidebar-${item.id}-tab`}
             >
               <Icon
                 className={cn(

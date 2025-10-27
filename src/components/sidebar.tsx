@@ -1,17 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
-  Folder,
   Settings,
   ChevronLeft,
   ChevronRight,
   Database,
   User,
-  Bell,
-  HelpCircle,
   LogOut,
   LayoutDashboard,
   Users,
@@ -19,6 +16,7 @@ import {
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { LogoutConfirmationModal } from '@/components/ui/logout-confirmation-modal';
 
 interface SidebarProps {
   className?: string;
@@ -27,12 +25,33 @@ interface SidebarProps {
 
 export function Sidebar({ className, forceCollapsed = false }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(forceCollapsed);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const { user, logout } = useAuth();
-  const router = useRouter();
   const pathname = usePathname();
 
   // Use forceCollapsed if provided, otherwise use state
   const effectiveCollapsed = forceCollapsed || isCollapsed;
+
+  const handleLogoutClick = () => {
+    setShowLogoutModal(true);
+  };
+
+  const handleLogoutConfirm = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setIsLoggingOut(false);
+      setShowLogoutModal(false);
+    }
+  };
+
+  const handleLogoutCancel = () => {
+    setShowLogoutModal(false);
+  };
 
   const menuItems = [
     {
@@ -64,9 +83,6 @@ export function Sidebar({ className, forceCollapsed = false }: SidebarProps) {
     },
   ];
 
-  const handleNavigation = (href: string) => {
-    router.push(href);
-  };
 
   return (
     <aside
@@ -75,6 +91,7 @@ export function Sidebar({ className, forceCollapsed = false }: SidebarProps) {
         effectiveCollapsed ? 'w-20' : 'w-72',
         className,
       )}
+      data-testid="main-sidebar"
     >
       {/* Header */}
       <div className="p-6 border-b border-gray-100">
@@ -124,7 +141,7 @@ export function Sidebar({ className, forceCollapsed = false }: SidebarProps) {
           {!effectiveCollapsed && (
             <div className="flex-1 min-w-0">
               <div className="flex items-center space-x-2">
-                <p className="text-sm font-semibold text-gray-900 truncate">
+                <p className="text-sm font-semibold text-gray-900 truncate" data-testid="sidebar-user-name">
                   {user?.firstName} {user?.lastName}
                 </p>
                 {user?.role && (
@@ -140,7 +157,7 @@ export function Sidebar({ className, forceCollapsed = false }: SidebarProps) {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+              <p className="text-xs text-gray-500 truncate" data-testid="sidebar-user-email">{user?.email}</p>
             </div>
           )}
         </div>
@@ -162,6 +179,7 @@ export function Sidebar({ className, forceCollapsed = false }: SidebarProps) {
             <Link
               key={item.id}
               href={item.href}
+              data-testid={`sidebar-${item.id}-link`}
               className={cn(
                 'w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 text-left group',
                 isActive
@@ -190,42 +208,13 @@ export function Sidebar({ className, forceCollapsed = false }: SidebarProps) {
       </nav>
 
       {/* Footer Actions */}
-      <div className="p-4 border-t border-gray-100 space-y-2">
-        {!effectiveCollapsed && (
-          <div className="mb-4">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">
-              Quick Actions
-            </h3>
-          </div>
-        )}
-
+      <div className="p-4 border-t border-gray-100">
         <Button
+          onClick={handleLogoutClick}
           variant="ghost"
+          data-testid="sidebar-logout-button"
           className={cn(
-            'w-full justify-start text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors',
-            effectiveCollapsed && 'justify-center px-2',
-          )}
-        >
-          <Bell className="h-4 w-4 mr-3 flex-shrink-0" />
-          {!effectiveCollapsed && 'Notifications'}
-        </Button>
-
-        <Button
-          variant="ghost"
-          className={cn(
-            'w-full justify-start text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors',
-            effectiveCollapsed && 'justify-center px-2',
-          )}
-        >
-          <HelpCircle className="h-4 w-4 mr-3 flex-shrink-0" />
-          {!effectiveCollapsed && 'Help & Support'}
-        </Button>
-
-        <Button
-          onClick={logout}
-          variant="ghost"
-          className={cn(
-            'w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors',
+            'w-full justify-start text-red-600 hover:text-white hover:bg-gradient-to-r hover:from-red-500 hover:to-red-600 transition-all duration-200 border border-red-200 hover:border-red-500 hover:shadow-md hover:shadow-red-100',
             effectiveCollapsed && 'justify-center px-2',
           )}
         >
@@ -233,6 +222,14 @@ export function Sidebar({ className, forceCollapsed = false }: SidebarProps) {
           {!effectiveCollapsed && 'Sign Out'}
         </Button>
       </div>
+
+      {/* Logout Confirmation Modal */}
+      <LogoutConfirmationModal
+        isOpen={showLogoutModal}
+        onClose={handleLogoutCancel}
+        onConfirm={handleLogoutConfirm}
+        isLoading={isLoggingOut}
+      />
     </aside>
   );
 }

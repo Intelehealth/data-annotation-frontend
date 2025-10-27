@@ -22,8 +22,6 @@ import {
   Loader2,
   Lock,
   Globe,
-  Users,
-  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast';
@@ -128,7 +126,7 @@ export default function AddDatasetPage() {
           message: 'Dataset name is available',
         });
       }
-    } catch (error) {
+    } catch {
       setNameValidation({
         isValidating: false,
         isValid: null,
@@ -188,27 +186,26 @@ export default function AddDatasetPage() {
       setTimeout(() => {
         router.push(`/dataset/${newDataset._id}?tab=upload`);
       }, 500);
-    } catch (error: any) {
-      console.error('Error creating dataset:', error);
-
+    } catch (error: unknown) {
       // Handle specific error cases
-      if (error.response?.status === 409) {
+      const axiosError = error as { response?: { status?: number; data?: { message?: string } } };
+      if (axiosError.response?.status === 409) {
         showToast({
           title: 'Dataset Name Already Exists',
           description:
-            error.response?.data?.message ||
+            axiosError.response?.data?.message ||
             'This dataset name is already taken.',
           type: 'error',
         });
-      } else if (error.response?.status === 400) {
+      } else if (axiosError.response?.status === 400) {
         showToast({
           title: 'Invalid Data',
           description:
-            error.response?.data?.message ||
+            axiosError.response?.data?.message ||
             'Please check your input and try again.',
           type: 'error',
         });
-      } else if (error.response?.status === 401) {
+      } else if (axiosError.response?.status === 401) {
         showToast({
           title: 'Authentication Required',
           description: 'Please log in again to continue.',
@@ -234,18 +231,19 @@ export default function AddDatasetPage() {
         <Button
           onClick={() => router.push('/dataset')}
           className="bg-black hover:bg-gray-800 text-white font-medium px-4 py-2"
+          data-testid="add-dataset-back-button"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Datasets
         </Button>
       </div>
       
-      <div className="max-w-2xl mx-auto w-full flex-1 flex flex-col p-4">
+      <div className="max-w-2xl mx-auto w-full flex-1 flex flex-col p-4" data-testid="add-dataset-container">
 
         {/* Main Form Container */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex-1 flex flex-col">
           <div className="text-left">
-            <h1 className="text-2xl font-semibold text-gray-900 p-3">
+            <h1 className="text-2xl font-semibold text-gray-900 p-3" data-testid="add-dataset-page-title">
               Create New Dataset
             </h1>
           </div>
@@ -263,6 +261,7 @@ export default function AddDatasetPage() {
                   id="name"
                   placeholder="Enter dataset name"
                   {...register('name')}
+                  data-testid="add-dataset-name-input"
                   className={cn(
                     'h-10 pr-10',
                     errors.name &&
@@ -280,16 +279,16 @@ export default function AddDatasetPage() {
                   {nameValidation.isValidating ? (
                     <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
                   ) : nameValidation.isValid === true ? (
-                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <CheckCircle className="h-4 w-4 text-green-500" data-testid="add-dataset-validation-success-icon" />
                   ) : nameValidation.isValid === false ? (
-                    <XCircle className="h-4 w-4 text-red-500" />
+                    <XCircle className="h-4 w-4 text-red-500" data-testid="add-dataset-validation-error-icon" />
                   ) : null}
                 </div>
               </div>
 
               {/* Error Messages */}
               {errors.name && (
-                <p className="text-sm text-red-600">{errors.name.message}</p>
+                <p className="text-sm text-red-600" data-testid="add-dataset-name-error-message">{errors.name.message}</p>
               )}
 
               {/* Validation Messages */}
@@ -301,6 +300,7 @@ export default function AddDatasetPage() {
                     nameValidation.isValid === false && 'text-red-600',
                     nameValidation.isValid === null && 'text-gray-500',
                   )}
+                  data-testid="add-dataset-validation-message"
                 >
                   {nameValidation.message}
                 </p>
@@ -347,7 +347,8 @@ export default function AddDatasetPage() {
                     <button
                       key={type.value}
                       type="button"
-                      onClick={() => setValue('datasetType', type.value as any)}
+                      onClick={() => setValue('datasetType', type.value as 'text' | 'image' | 'audio' | 'multimodal')}
+                      data-testid={`add-dataset-type-${type.value}-button`}
                       className={cn(
                         'flex flex-col items-center space-y-1 p-3 rounded-lg border-2 transition-all hover:shadow-sm',
                         isSelected
@@ -356,7 +357,7 @@ export default function AddDatasetPage() {
                       )}
                     >
                       <Icon className="h-6 w-6" />
-                      <span className="text-xs font-medium text-center leading-tight">
+                      <span className="text-xs font-medium text-center leading-tight" data-testid={`add-dataset-type-${type.value}-label`}>
                         {type.label}
                       </span>
                     </button>
@@ -384,7 +385,8 @@ export default function AddDatasetPage() {
                     <button
                       key={type.value}
                       type="button"
-                      onClick={() => setValue('accessType', type.value as any)}
+                      onClick={() => setValue('accessType', type.value as 'private' | 'public')}
+                      data-testid={`add-dataset-access-type-${type.value}-button`}
                       className={cn(
                         'flex flex-col items-start space-y-1 p-3 rounded-lg border-2 transition-all hover:shadow-sm text-left',
                         isSelected
@@ -402,14 +404,14 @@ export default function AddDatasetPage() {
                         <span className={cn('text-sm font-medium', 
                           isSelected ? type.color : 
                           type.value === 'private' && !selectedAccessType ? 'text-gray-700' : 'text-gray-600'
-                        )}>
+                        )} data-testid={`add-dataset-access-type-${type.value}-label`}>
                           {type.label}
                         </span>
                       </div>
                       <p className={cn('text-xs leading-relaxed',
                         isSelected ? 'text-gray-700' : 
                         type.value === 'private' && !selectedAccessType ? 'text-gray-600' : 'text-gray-500'
-                      )}>
+                      )} data-testid={`add-dataset-access-type-${type.value}-description`}>
                         {type.description}
                       </p>
                     </button>
@@ -428,9 +430,9 @@ export default function AddDatasetPage() {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
               <div className="flex items-start space-x-2">
                 <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-blue-800">
+                <p className="text-xs text-blue-800" data-testid="add-dataset-type-info-note">
                   <strong>Note:</strong> Dataset type is for organization only.
-                  It doesn't affect annotation functionality - you can upload
+                  It doesn&apos;t affect annotation functionality - you can upload
                   any data type.
                 </p>
               </div>
@@ -446,6 +448,7 @@ export default function AddDatasetPage() {
                 variant="outline"
                 onClick={() => router.push('/dataset')}
                 disabled={isSubmitting}
+                data-testid="add-dataset-cancel-button"
               >
                 Cancel
               </Button>
@@ -456,6 +459,7 @@ export default function AddDatasetPage() {
                   nameValidation.isValidating ||
                   nameValidation.isValid === false
                 }
+                data-testid="add-dataset-submit-button"
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 {isSubmitting ? (

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Upload,
@@ -15,7 +14,6 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
-  Database,
   Table,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -24,7 +22,7 @@ import { CSVUploadComponent } from './csv-upload-component';
 
 interface UploadComponentProps {
   onFilesSelected: (files: File[]) => void;
-  onUploadComplete?: (assets: any[]) => void;
+  onUploadComplete?: (assets: unknown[]) => void;
   onCSVUploaded?: (
     csvImportId: string,
     fileName: string,
@@ -46,7 +44,7 @@ export function UploadComponent({
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{
+  const [, setUploadProgress] = useState<{
     [key: string]: number;
   }>({});
   const [uploadStatus, setUploadStatus] = useState<{
@@ -65,8 +63,7 @@ export function UploadComponent({
             description: dataset.description || ''
           });
           setSelectedDatasetId(datasetId);
-        } catch (error) {
-          console.error('Error loading dataset info:', error);
+        } catch {
           setDatasetInfo(null);
         }
       }
@@ -186,9 +183,7 @@ export function UploadComponent({
       setTimeout(() => {
         clearAllFiles();
       }, 2000);
-    } catch (error) {
-      console.error('Upload failed:', error);
-
+    } catch {
       // Update status for all files to error
       const errorStatus: {
         [key: string]: 'pending' | 'uploading' | 'success' | 'error';
@@ -211,6 +206,7 @@ export function UploadComponent({
 
   const getFileIcon = (file: File) => {
     if (file.type.startsWith('image/'))
+      // eslint-disable-next-line jsx-a11y/alt-text
       return <Image className="h-5 w-5 text-blue-500" />;
     if (file.type.includes('audio'))
       return <FileAudio className="h-5 w-5 text-green-500" />;
@@ -321,6 +317,7 @@ export function UploadComponent({
                 ? 'border-blue-400 bg-blue-50 scale-105'
                 : 'border-gray-300 hover:border-blue-300 hover:bg-gray-50',
             )}
+            data-testid="file-upload-area"
             onDrop={handleFileDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -356,6 +353,7 @@ export function UploadComponent({
                 variant="outline"
                 size="sm"
                 className="mt-2"
+                data-testid="file-upload-select-button"
                 onClick={(e) => {
                   e.stopPropagation();
                   document.getElementById('fileInput')?.click();
@@ -372,6 +370,7 @@ export function UploadComponent({
               multiple
               accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.docx,.doc,.txt,.pdf,.mp3,.wav,.aac,.flac"
               onChange={handleFileSelect}
+              data-testid="file-upload-file-input"
               className="hidden"
             />
           </div>

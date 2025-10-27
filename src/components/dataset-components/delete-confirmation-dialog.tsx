@@ -37,7 +37,7 @@ export function DeleteConfirmationDialog({
             Delete {itemType}
           </DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete "{itemName}"? This action cannot be
+            Are you sure you want to delete &quot;{itemName}&quot;? This action cannot be
             undone.
           </DialogDescription>
         </DialogHeader>
@@ -46,6 +46,7 @@ export function DeleteConfirmationDialog({
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={isLoading}
+            data-testid="delete-dialog-cancel-button"
           >
             Cancel
           </Button>
@@ -53,6 +54,7 @@ export function DeleteConfirmationDialog({
             variant="destructive"
             onClick={onConfirm}
             disabled={isLoading}
+            data-testid="delete-dialog-confirm-button"
           >
             {isLoading ? 'Deleting...' : 'Delete'}
           </Button>

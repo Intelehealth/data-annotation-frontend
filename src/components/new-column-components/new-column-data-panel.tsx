@@ -4,11 +4,15 @@ import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Save, Download, CheckCircle, GripVertical } from 'lucide-react';
-import { AnnotationField, AnnotationConfig } from '@/lib/api/csv-imports';
+import { CheckCircle, GripVertical } from 'lucide-react';
+import { AnnotationConfig } from '@/lib/api/dataset-annotation-types';
 import { ExportDropdown, ExportOption } from '@/components/ui/export-dropdown';
+import { ImageThumbnails } from '@/components/annotation-components/image-thumbnails';
+import { MarkdownField } from '@/components/annotation-components/markdown-field';
+import { NumberField } from '@/components/annotation-components/number-field';
 import { cn } from '@/lib/utils';
 import { DragDropHelper } from '@/lib/drag-drop-helper';
+import { NewColumnInput } from './new-column-input';
 
 interface NewColumnData {
   [fieldName: string]: string;
@@ -17,14 +21,20 @@ interface NewColumnData {
 interface NewColumnDataPanelProps {
   annotationConfig: AnnotationConfig | null;
   newColumnData: NewColumnData;
+  newColumns?: any[]; // Array of new column definitions
   onNewColumnChange: (fieldName: string, value: string) => void;
   onSaveAllNewColumnData: () => void;
   onExportSelectedColumns: () => void;
   onExportAllColumns: () => void;
   isSaving: boolean;
-  completedCount: number;
-  pendingCount: number;
-  currentRowIndex?: number;
+  datasetId?: string;
+  rowIndex?: number;
+  imageAuthConfig?: {
+    isPrivate: boolean;
+    username?: string;
+    password?: string;
+  };
+  // Progress tracking props removed as they were unused
   onPanelDragOver?: (e: React.DragEvent) => void;
   onDropFromMetadata?: () => void;
   draggedField?: string | null;
@@ -36,14 +46,16 @@ interface NewColumnDataPanelProps {
 export function NewColumnDataPanel({
   annotationConfig,
   newColumnData,
+  newColumns = [],
   onNewColumnChange,
   onSaveAllNewColumnData,
   onExportSelectedColumns,
   onExportAllColumns,
   isSaving,
-  completedCount,
-  pendingCount,
-  currentRowIndex,
+  datasetId,
+  rowIndex,
+  imageAuthConfig,
+  // Progress tracking props removed
   onPanelDragOver,
   onDropFromMetadata,
   draggedField,
@@ -111,7 +123,7 @@ export function NewColumnDataPanel({
       <div className="px-4 pb-4 border-b border-gray-100">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">
+            <h2 className="text-lg font-semibold text-gray-900" data-testid="annotation-panel-title">
             Annotation
             </h2>
             <p className="text-sm text-gray-500 mt-1">
@@ -132,23 +144,24 @@ export function NewColumnDataPanel({
           // Use DragDropHelper to determine if field can be dragged
           const dragValidation = DragDropHelper.canDragField(field, 'annotation');
           const isDraggable = dragValidation.canDrag;
-          const restrictionMessage = DragDropHelper.getDragRestrictionMessage(field, 'annotation');
+          // Check drag restrictions for validation
           
           return (
              <div 
                key={field.fieldName} 
+               data-testid={`annotation-field-${field.fieldName}`}
                className={cn(
                  "space-y-2 p-4 border border-gray-200 rounded-lg transition-all duration-200",
                  isDraggable ? "bg-gray-50 hover:bg-gray-100 hover:shadow-md cursor-move" : "bg-white",
-                 draggedField === field.csvColumnName && "opacity-50 bg-blue-50 border-blue-300"
+                 (draggedField === field.csvColumnName || draggedField === field.fieldName) && "opacity-50 bg-blue-50 border-blue-300"
                )}
                draggable={isDraggable}
-               onDragStart={isDraggable && onAnnotationFieldDragStart ? (e) => onAnnotationFieldDragStart(e, field.csvColumnName) : undefined}
+               onDragStart={isDraggable && onAnnotationFieldDragStart ? (e) => onAnnotationFieldDragStart(e, field.csvColumnName || field.fieldName) : undefined}
                onDragOver={onAnnotationFieldDragOver}
                onDrop={onAnnotationFieldDrop ? (e) => {
                  e.preventDefault();
                  e.stopPropagation();
-                 onAnnotationFieldDrop(e, field.csvColumnName);
+                 onAnnotationFieldDrop(e, field.csvColumnName || field.fieldName);
                } : undefined}
              >
               <div className="flex items-center justify-between mb-2">
@@ -162,15 +175,99 @@ export function NewColumnDataPanel({
                   </Label>
                 </div>
                 {field.isNewColumn && (
-                  <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                  <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded" data-testid={`annotation-field-new-column-${field.fieldName}`}>
                     New Column
                   </div>
                 )}
               </div>
               
-              {/* Content display with See More functionality */}
+              {/* Content display with different field types */}
               {(() => {
                 const content = newColumnData[field.fieldName] || '';
+                
+                // Handle image fields
+                if (field.fieldType === 'image') {
+                  return (
+                    <ImageThumbnails
+                      imageUrls={content}
+                      columnName={field.fieldName}
+                      maxDisplay={4}
+                      datasetId={datasetId}
+                      rowIndex={rowIndex}
+                      fieldName={field.fieldName}
+                      imageAuthConfig={imageAuthConfig}
+                    />
+                  );
+                }
+
+                // Handle audio fields
+                if (field.fieldType === 'audio') {
+                  return (
+                    <div className="p-3 border border-gray-200 rounded-md bg-white">
+                      {content ? (
+                        <div className="flex items-center space-x-3">
+                          <span className="text-sm text-gray-600 truncate">
+                            {content}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500 text-center">
+                          No audio found
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // Handle markdown fields
+                if (field.fieldType === 'markdown') {
+                  return (
+                    <MarkdownField
+                      value={content}
+                      onChange={(value) => onNewColumnChange(field.fieldName, value)}
+                      placeholder={`Enter ${field.fieldName.toLowerCase()} in markdown...`}
+                      fieldName={field.fieldName}
+                      isEditing={focusedField === field.fieldName}
+                      onEdit={() => setFocusedField(field.fieldName)}
+                      onSave={() => setFocusedField(null)}
+                      onCancel={() => setFocusedField(null)}
+                    />
+                  );
+                }
+
+                // Handle number fields
+                if (field.fieldType === 'number') {
+                  return (
+                    <NumberField
+                      value={content}
+                      onChange={(value) => onNewColumnChange(field.fieldName, value)}
+                      placeholder={`Enter ${field.fieldName.toLowerCase()}...`}
+                      fieldName={field.fieldName}
+                      isEditing={focusedField === field.fieldName}
+                      onEdit={() => setFocusedField(field.fieldName)}
+                      onSave={() => setFocusedField(null)}
+                      onCancel={() => setFocusedField(null)}
+                      allowDecimals={true}
+                    />
+                  );
+                }
+
+                // Handle new columns with special input types
+                if (field.isNewColumn && field.newColumnId) {
+                  const newColumn = newColumns.find(col => col.id === field.newColumnId);
+                  if (newColumn) {
+                    return (
+                      <NewColumnInput
+                        column={newColumn}
+                        value={content}
+                        onChange={(value) => onNewColumnChange(field.fieldName, value)}
+                        placeholder={`Enter ${field.fieldName.toLowerCase()}...`}
+                      />
+                    );
+                  }
+                }
+
+                // Handle regular text fields and other types
                 const lines = content.split('\n');
                 const isExpanded = expandedFields.has(field.fieldName);
                 const shouldTruncate = lines.length > 6 && !isExpanded;
@@ -253,6 +350,7 @@ export function NewColumnDataPanel({
             size="sm"
             onClick={onSaveAllNewColumnData}
             disabled={isSaving}
+            data-testid="new-column-panel-save-button"
             className="bg-green-600 hover:bg-green-700 text-white font-medium px-6 py-2"
           >
             <CheckCircle className="h-4 w-4 mr-2" />

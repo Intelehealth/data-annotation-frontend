@@ -71,6 +71,7 @@ export function Toast({
         'fixed bottom-4 right-4 z-50 max-w-sm w-full transform transition-all duration-300 ease-in-out',
         isVisible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0',
       )}
+      data-testid={`toast-${type}`}
     >
       <div className={cn('rounded-lg border p-4 shadow-lg', getStyles())}>
         <div className="flex items-start space-x-3">

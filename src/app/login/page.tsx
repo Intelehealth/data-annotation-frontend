@@ -158,6 +158,7 @@ export default function LoginPage() {
                   type="email"
                   placeholder="Enter your email"
                   {...register('email')}
+                  data-testid="login-email-input"
                   className={`pl-12 h-11 border-2 focus:ring-4 focus:ring-blue-100 rounded-xl text-sm transition-all duration-200 ${
                     errors.email
                       ? 'border-red-300 focus:border-red-500'
@@ -186,6 +187,7 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Enter your password"
                   {...register('password')}
+                  data-testid="login-password-input"
                   className={`pl-12 pr-12 h-11 border-2 focus:ring-4 focus:ring-blue-100 rounded-xl text-sm transition-all duration-200 ${
                     errors.password
                       ? 'border-red-300 focus:border-red-500'
@@ -196,6 +198,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  data-testid="login-show-password-button"
                   className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200"
                   disabled={isLoading}
                 >
@@ -217,11 +220,12 @@ export default function LoginPage() {
             <Button
               type="submit"
               disabled={isLoading}
+              data-testid="login-submit-button"
               className="w-full h-10 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-xl transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-sm shadow-lg hover:shadow-xl"
             >
               {isLoading ? (
                 <div className="flex items-center">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" data-testid="login-loading-spinner"></div>
                   Signing In...
                 </div>
               ) : (
@@ -246,7 +250,9 @@ export default function LoginPage() {
           </div>
 
           {/* Google OAuth */}
-          <GoogleOAuth mode="login" disabled={isLoading} />
+          <div data-testid="login-google-button">
+            <GoogleOAuth mode="login" disabled={isLoading} />
+          </div>
 
           {/* Spacing */}
           <div className="mb-4"></div>
@@ -254,9 +260,10 @@ export default function LoginPage() {
           {/* Sign Up Link */}
           <div className="text-center">
             <p className="text-gray-600 text-sm">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <Link
                 href="/signup"
+                data-testid="login-signup-link"
                 className="text-blue-600 hover:text-blue-700 font-medium underline"
               >
                 Sign up here
